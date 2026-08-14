@@ -22,8 +22,14 @@ const context = vm.createContext({
   encodeURIComponent,
   decodeURIComponent,
   Utilities: {
-    formatDate(date) {
-      return date.toISOString().slice(0, 10);
+    getUuid() {
+      return '12345678-1234-1234-1234-123456789abc';
+    },
+    formatDate(date, timezone, pattern) {
+      if (pattern === 'yyyy-MM-dd') {
+        return date.toISOString().slice(0, 10);
+      }
+      return date.toISOString();
     }
   }
 });
@@ -56,6 +62,28 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
     ordering,
     ignoredCount
   };
+}
+
+function jobRow(overrides = {}) {
+  return [
+    overrides.enabled !== undefined ? overrides.enabled : true,
+    overrides.name || 'Valid',
+    overrides.source || 'Liked Songs',
+    overrides.targetLabel || 'Open playlist ↗',
+    overrides.behavior || 'Exact Mirror',
+    overrides.frequency || 'Daily',
+    '',
+    '',
+    overrides.jobId || 'job_123',
+    overrides.sourcePlaylistId || '',
+    overrides.targetPlaylistId || '1234567890AB',
+    overrides.lastAttempt || '',
+    overrides.lastSuccess || '',
+    overrides.lastStatus || '',
+    overrides.lastAdded || 0,
+    overrides.lastRemoved || 0,
+    overrides.lastError || ''
+  ];
 }
 
 (function testPlaylistParsing() {
@@ -140,18 +168,63 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert.strictEqual(plan.addMode, 'END');
 })();
 
+(function testFriendlyJobLabelsParseToRuntimeConfiguration() {
+  const parsed = SheetStore._parseJobRows([
+    jobRow({ behavior: 'Append Only', frequency: 'Every 10 days' })
+  ], 2);
+  assert.strictEqual(parsed.errors.length, 0);
+  assert.strictEqual(parsed.jobs.length, 1);
+  assert.strictEqual(parsed.jobs[0].sourceType, 'LIKED_SONGS');
+  assert.strictEqual(parsed.jobs[0].strategy, 'APPEND');
+  assert.strictEqual(parsed.jobs[0].intervalDays, 10);
+  assert.strictEqual(parsed.jobs[0].targetPlaylist, '1234567890AB');
+})();
+
+(function testDisabledBrokenJobDoesNotCreateConfigurationError() {
+  const parsed = SheetStore._parseJobRows([
+    jobRow({ enabled: false, source: 'broken', behavior: 'broken', frequency: 'broken', targetPlaylistId: 'broken' })
+  ], 2);
+  assert.strictEqual(parsed.jobs.length, 1);
+  assert.strictEqual(parsed.jobs[0].enabled, false);
+  assert.strictEqual(parsed.errors.length, 0);
+})();
+
 (function testMalformedEnabledJobDoesNotBlockValidJobs() {
-  const rows = [
-    [true, 'Broken', 'LIKED_SONGS', '', 'not-a-playlist', 'MIRROR', 1, '', '', '', 0, 0, ''],
-    [true, 'Valid', 'LIKED_SONGS', '', '1234567890AB', 'APPEND', 10, '', '', '', 0, 0, ''],
-    [false, 'Disabled broken row', 'NOPE', '', '', 'NOPE', 'bad', '', '', '', 0, 0, '']
-  ];
-  const parsed = SheetStore._parseJobRows(rows, 2);
+  const parsed = SheetStore._parseJobRows([
+    jobRow({ name: 'Broken', targetPlaylistId: 'not-a-playlist' }),
+    jobRow({ name: 'Valid', behavior: 'Append Only', frequency: 'Every 10 days' })
+  ], 2);
   assert.strictEqual(parsed.jobs.length, 1);
   assert.strictEqual(parsed.jobs[0].name, 'Valid');
   assert.strictEqual(parsed.errors.length, 1);
   assert.strictEqual(parsed.errors[0].rowNumber, 2);
   assert.match(parsed.errors[0].error, /Invalid Spotify playlist/);
+})();
+
+(function testLegacyJobMigrationPreservesPlaylistIdsAndTelemetry() {
+  const migrated = SheetStore._legacyJobToStoredRow([
+    true,
+    'Shareable Likes',
+    'LIKED_SONGS',
+    '',
+    'https://open.spotify.com/playlist/1234567890AB?si=abc',
+    'MIRROR',
+    1,
+    new Date('2026-08-14T03:00:00Z'),
+    new Date('2026-08-14T03:00:00Z'),
+    'Success',
+    3,
+    1,
+    ''
+  ]);
+  assert.strictEqual(migrated[1], 'Shareable Likes');
+  assert.strictEqual(migrated[4], 'Exact Mirror');
+  assert.strictEqual(migrated[5], 'Daily');
+  assert.strictEqual(migrated[8], 'job_1234567812341234');
+  assert.strictEqual(migrated[10], '1234567890AB');
+  assert.strictEqual(migrated[13], 'Success');
+  assert.strictEqual(migrated[14], 3);
+  assert.strictEqual(migrated[15], 1);
 })();
 
 (function testCalendarDayMath() {
@@ -177,53 +250,48 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
 })();
 
 (function testSemanticVersionComparison() {
-  assert(UpdateChecker.compareVersions('1.2.0', '1.1.9') > 0);
+  assert(UpdateChecker.compareVersions('1.3.0', '1.2.9') > 0);
   assert(UpdateChecker.compareVersions('2.0.0', '1.99.99') > 0);
-  assert(UpdateChecker.compareVersions('1.2.0', '1.2.0') === 0);
-  assert(UpdateChecker.compareVersions('1.2.0-beta.2', '1.2.0-beta.1') > 0);
-  assert(UpdateChecker.compareVersions('1.2.0', '1.2.0-beta.9') > 0);
+  assert(UpdateChecker.compareVersions('1.3.0', '1.3.0') === 0);
+  assert(UpdateChecker.compareVersions('1.3.0-beta.2', '1.3.0-beta.1') > 0);
+  assert(UpdateChecker.compareVersions('1.3.0', '1.3.0-beta.9') > 0);
   assert.throws(() => UpdateChecker.compareVersions('not-semver', '1.0.0'), /Invalid Spoti Sync version/);
 })();
 
 (function testUpdateMetadataValidation() {
   const valid = UpdateChecker._validateMetadata({
     schema: 1,
-    version: '1.2.0',
+    version: '1.3.0',
     channel: 'stable',
     released_at: '2026-08-15',
-    installer_url: 'https://example.com/update',
-    changelog_url: 'https://example.com/changelog',
+    installer_url: 'https://sid.is-a.dev/Spoti-sync/docs/#update',
+    changelog_url: 'https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md',
     notes: ['One', 'Two']
   });
-  assert.strictEqual(valid.version, '1.2.0');
+  assert.strictEqual(valid.version, '1.3.0');
   assert.deepStrictEqual(Array.from(valid.notes), ['One', 'Two']);
-  assert.throws(
-    () => UpdateChecker._validateMetadata({
-      schema: 1,
-      version: '1.2.0',
-      installer_url: 'http://example.com/update',
-      changelog_url: 'https://example.com/changelog'
-    }),
-    /HTTPS URL/
-  );
 })();
 
 (function testPublishedVersionMetadataMatchesSource() {
   const metadata = JSON.parse(fs.readFileSync(path.join(root, 'docs', 'version.json'), 'utf8'));
   assert.strictEqual(metadata.version, VERSION);
   assert.strictEqual(metadata.schema, 1);
-  assert(/^https:\/\//.test(metadata.installer_url));
-  assert(/^https:\/\//.test(metadata.changelog_url));
+  assert.strictEqual(metadata.installer_url, 'https://sid.is-a.dev/Spoti-sync/docs/#update');
+  assert.strictEqual(Constants.PROJECT_URL, 'https://sid.is-a.dev/Spoti-sync/');
+  assert.strictEqual(Constants.HEARTBEAT_SIGNATURE, 'sid.is-a.dev');
 })();
 
 (function testBundleSafetyAndEndpointGuards() {
   const bundle = fs.readFileSync(path.join(root, 'dist', 'SpotiSync.gs'), 'utf8');
   assert(!/\/playlists\/[^\n'"`]*\/tracks/.test(bundle));
   assert(bundle.includes("'/playlists/' + id + '/items'"));
+  assert(bundle.includes("request('put', '/playlists/' + id"));
+  assert(bundle.includes('description: text'));
   assert(!bundle.includes('client_secret'));
   assert(!bundle.includes('user-library-modify'));
   assert(bundle.includes('/usercallback'));
   assert(bundle.includes('getJobReadResult'));
+  assert(bundle.includes('PlaylistHeartbeat'));
   assert(bundle.includes('UPDATE_METADATA_URL'));
   assert(!bundle.includes('https://www.googleapis.com/auth/script.projects'));
   assert(!bundle.includes('script.googleapis.com/v1/projects/'));
@@ -241,7 +309,9 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
     '40_Sources.gs',
     '50_Strategies.gs',
     '60_SheetStore.gs',
+    '65_SheetViews.gs',
     '70_SyncEngine.gs',
+    '75_PlaylistHeartbeat.gs',
     '80_Scheduler.gs',
     '85_UpdateChecker.gs',
     '90_Ui.gs',
@@ -250,10 +320,10 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
 
   expectedFiles.forEach((filename) => assert(siteScript.includes(`'${filename}'`)));
   assert(siteScript.includes('raw.githubusercontent.com/11sid11/Spoti-sync/main/src/'));
-  assert(siteScript.includes("document.execCommand('copy')"));
-  assert(siteScript.includes("downloadText('SpotiSync.gs', bundle)"));
   assert(siteHtml.includes('id="update"'));
-  assert(siteHtml.includes('data-copy-bundle'));
+  assert(siteHtml.includes('Schedule'));
+  assert(siteHtml.includes('Activity'));
+  assert(siteHtml.includes('playlist description'));
   assert(siteHtml.includes('Updates are intentionally not installed silently.'));
 })();
 

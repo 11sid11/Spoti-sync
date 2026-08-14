@@ -13,7 +13,9 @@ const sourceFiles = [
   '40_Sources.gs',
   '50_Strategies.gs',
   '60_SheetStore.gs',
+  '65_SheetViews.gs',
   '70_SyncEngine.gs',
+  '75_PlaylistHeartbeat.gs',
   '80_Scheduler.gs',
   '85_UpdateChecker.gs',
   '90_Ui.gs',
@@ -54,10 +56,6 @@ const bundle = buildBundle();
 const output = path.join(root, 'dist', 'SpotiSync.gs');
 
 writeOrCheck(output, bundle, checkOnly);
-
-// Parse the complete bundle with the standard JavaScript parser used by Node.
-// Apps Script globals are referenced only inside functions, so syntax validation
-// does not require mocking Google services.
 new Function(bundle);
 
 console.log(checkOnly ? 'Generated file is current.' : 'Generated SpotiSync.gs bundle.');
