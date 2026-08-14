@@ -12,6 +12,8 @@ Spoti Sync exists for a simple reason: Spotify's **Liked Songs** collection is u
 - **No runtime dependencies.** The installed Apps Script is plain JavaScript using built-in Google services.
 - **Low quota footprint.** One daily Apps Script trigger decides which configured jobs are due.
 - **Visible scheduler state.** The Jobs sheet shows whether the cloud scheduler is enabled, how many Spoti Sync triggers exist, its daily execution window, the last background check, and the next due job.
+- **Automatic update awareness.** The daily scheduler checks a small GitHub version metadata file at most once per day and surfaces update availability in the Sheet.
+- **No silent remote code execution.** Updates are never installed or evaluated automatically; the user explicitly replaces the Apps Script bundle.
 - **Open source and inspectable.** Human-readable source lives in `src/`; the GitHub Pages installer assembles the one-file `SpotiSync.gs` bundle directly from those committed modules in the user's browser.
 
 ## Included strategies
@@ -38,9 +40,25 @@ The **Jobs** sheet keeps the A:M job table unchanged and adds a scheduler panel 
 - the actual Spoti Sync scheduler trigger count;
 - the last scheduler check and result;
 - the next due enabled job;
+- installed Spoti Sync version and update status;
+- the last update check time;
 - where per-job attempt/success/add/remove/error telemetry is recorded.
 
 Google Apps Script selects a time within the configured hourly window and then keeps that recurring timing approximately consistent. Spoti Sync currently configures the 03:00 hour in the spreadsheet timezone.
+
+## Updates
+
+Starting with **1.2.0**, Spoti Sync has an automatic update checker:
+
+1. The existing daily scheduler asks GitHub for `docs/version.json` at most once every 24 hours.
+2. Only release metadata is downloaded: version, installer/changelog URLs, and short release notes.
+3. The Dashboard and Jobs panel show whether the installed version is current.
+4. **Spoti Sync → Check for Updates** performs an immediate check and opens a guided update dialog.
+5. If an update exists, the user opens the GitHub Pages update section, copies the latest bundle, replaces `Code.gs`, saves, reloads the same Sheet, and runs **Initialize / Repair Sheets** once.
+
+The updater intentionally does **not** call the Apps Script `projects.updateContent` API, request `script.projects`, or evaluate source code fetched from GitHub. This keeps the self-deployed trust boundary intact and avoids expanding installation permissions merely for convenience.
+
+The `docs/version.json` version must match `SpotiSync.VERSION`; CI enforces this so published release metadata cannot drift from the install bundle.
 
 ## Installation
 
@@ -53,7 +71,7 @@ At a high level:
 3. Use **Copy Apps Script** or **Download Apps Script** on the setup page. The bundle is assembled on demand from `src/*.gs`; there is no separately hosted generated file to go stale or disappear.
 4. Replace `Code.gs` with the generated bundle and save.
 5. Reload the Sheet and open **Spoti Sync → Setup**.
-6. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, and paste your Client ID.
+6. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, select **Web API**, and paste your Client ID.
 7. Authorize Spotify, add sync jobs, preview changes, then enable the daily scheduler.
 8. Open the **Jobs** sheet to confirm the scheduler panel says **Enabled** and `Trigger count` is `1`.
 
@@ -63,7 +81,7 @@ No web-app deployment, local server, Node.js installation, or `clasp` setup is r
 
 Spoti Sync requests only the Spotify capabilities needed to read library/playlist membership and modify configured playlists. It intentionally does **not** request permission to modify the user's Liked Songs library.
 
-Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's own bound script project. Playlist configuration and non-sensitive run history live in the bound Google Sheet.
+Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's own bound script project. Playlist configuration and non-sensitive run/update history live in the bound Google Sheet or Document Properties.
 
 See [`SECURITY.md`](SECURITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
 
@@ -75,6 +93,7 @@ The source is split into Apps Script-friendly modules under `src/`. A dependency
 node scripts/build.js
 node scripts/test.js
 node scripts/test-scheduler.js
+node scripts/test-update-checker.js
 ```
 
 The generated local bundle lives under ignored `dist/`; production installation does not depend on committing or publishing generated code.

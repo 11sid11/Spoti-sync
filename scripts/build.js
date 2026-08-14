@@ -15,6 +15,7 @@ const sourceFiles = [
   '60_SheetStore.gs',
   '70_SyncEngine.gs',
   '80_Scheduler.gs',
+  '85_UpdateChecker.gs',
   '90_Ui.gs',
   '99_Entrypoints.gs'
 ];

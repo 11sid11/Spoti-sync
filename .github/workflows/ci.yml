@@ -25,3 +25,5 @@ jobs:
         run: node scripts/test.js
       - name: Run scheduler visibility checks
         run: node scripts/test-scheduler.js
+      - name: Run update checker behavior tests
+        run: node scripts/test-update-checker.js

@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 
   var HANDLER = 'spotiSyncScheduler';
   var PANEL_START_COLUMN = 15; // O
-  var PANEL_ROWS = 9;
+  var PANEL_ROWS = 12;
 
   function schedulerTriggers() {
     return ScriptApp.getProjectTriggers().filter(function (trigger) {
@@ -89,6 +89,7 @@ var SpotiSync = SpotiSync || {};
     var triggers = schedulerTriggers();
     var status = ns.Storage.getDocumentStatus();
     var readResult = ns.SheetStore.getJobReadResult();
+    var updateStatus = ns.UpdateChecker.getCachedStatus();
     var values = [
       ['Scheduler', triggers.length ? 'Enabled' : 'Disabled'],
       ['Schedule', scheduleLabel(timezone)],
@@ -97,8 +98,11 @@ var SpotiSync = SpotiSync || {};
       ['Last scheduler check', formatTimestamp(status.SCHEDULER_LAST_CHECK_AT, timezone)],
       ['Last check status', status.SCHEDULER_LAST_CHECK_STATUS || '—'],
       ['Next due job', nextDueLabel(readResult, new Date(), timezone)],
+      ['Spoti Sync version', ns.VERSION],
+      ['Updates', ns.UpdateChecker.statusLabel(updateStatus)],
+      ['Last update check', formatTimestamp(updateStatus.checkedAt, timezone)],
       ['Job telemetry', 'Columns H:M show attempt, success, status, added, removed, and errors'],
-      ['Control', 'Spoti Sync menu → Enable / Disable / Sync Now']
+      ['Control', 'Spoti Sync menu → Check for Updates / Enable / Disable / Sync Now']
     ];
 
     var range = sheet.getRange(1, PANEL_START_COLUMN, PANEL_ROWS, 2);
@@ -119,6 +123,12 @@ var SpotiSync = SpotiSync || {};
     } else {
       sheet.getRange(1, PANEL_START_COLUMN + 1).setFontColor('#d93025');
     }
+
+    if (updateStatus.updateAvailable) {
+      sheet.getRange(9, PANEL_START_COLUMN + 1).setFontColor('#b06000').setFontWeight('bold');
+    } else if (updateStatus.checkStatus === 'Up to date') {
+      sheet.getRange(9, PANEL_START_COLUMN + 1).setFontColor('#137333');
+    }
   }
 
   function recordSchedulerCheck(status, error) {
@@ -127,6 +137,14 @@ var SpotiSync = SpotiSync || {};
       SCHEDULER_LAST_CHECK_STATUS: status,
       SCHEDULER_LAST_CHECK_ERROR: error ? ns.Core.safeErrorMessage(error) : ''
     });
+  }
+
+  function checkForUpdatesBestEffort() {
+    try {
+      ns.UpdateChecker.check({ force: false });
+    } catch (ignored) {
+      // Update checks must never break playlist synchronization.
+    }
   }
 
   ns.Scheduler = {
@@ -179,11 +197,15 @@ var SpotiSync = SpotiSync || {};
       try {
         var result = ns.SyncEngine.runDue();
         recordSchedulerCheck(result.status || 'Success', null);
+        checkForUpdatesBestEffort();
+        ns.SheetStore.refreshDashboard();
         renderPanel();
         return result;
       } catch (error) {
         recordSchedulerCheck('Error', error);
+        checkForUpdatesBestEffort();
         try {
+          ns.SheetStore.refreshDashboard();
           renderPanel();
         } catch (ignored) {
           // Preserve the original scheduler error.
