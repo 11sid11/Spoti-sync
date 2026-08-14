@@ -36,8 +36,9 @@ function load(filename) {
 load('00_Core.gs');
 load('50_Strategies.gs');
 load('60_SheetStore.gs');
+load('85_UpdateChecker.gs');
 
-const { Core, Strategies, Constants, SheetStore } = context.SpotiSync;
+const { Core, Strategies, Constants, SheetStore, UpdateChecker, VERSION } = context.SpotiSync;
 
 function track(id) {
   return {
@@ -175,6 +176,46 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert(!redacted.includes('secret3'));
 })();
 
+(function testSemanticVersionComparison() {
+  assert(UpdateChecker.compareVersions('1.2.0', '1.1.9') > 0);
+  assert(UpdateChecker.compareVersions('2.0.0', '1.99.99') > 0);
+  assert(UpdateChecker.compareVersions('1.2.0', '1.2.0') === 0);
+  assert(UpdateChecker.compareVersions('1.2.0-beta.2', '1.2.0-beta.1') > 0);
+  assert(UpdateChecker.compareVersions('1.2.0', '1.2.0-beta.9') > 0);
+  assert.throws(() => UpdateChecker.compareVersions('not-semver', '1.0.0'), /Invalid Spoti Sync version/);
+})();
+
+(function testUpdateMetadataValidation() {
+  const valid = UpdateChecker._validateMetadata({
+    schema: 1,
+    version: '1.2.0',
+    channel: 'stable',
+    released_at: '2026-08-15',
+    installer_url: 'https://example.com/update',
+    changelog_url: 'https://example.com/changelog',
+    notes: ['One', 'Two']
+  });
+  assert.strictEqual(valid.version, '1.2.0');
+  assert.deepStrictEqual(Array.from(valid.notes), ['One', 'Two']);
+  assert.throws(
+    () => UpdateChecker._validateMetadata({
+      schema: 1,
+      version: '1.2.0',
+      installer_url: 'http://example.com/update',
+      changelog_url: 'https://example.com/changelog'
+    }),
+    /HTTPS URL/
+  );
+})();
+
+(function testPublishedVersionMetadataMatchesSource() {
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'docs', 'version.json'), 'utf8'));
+  assert.strictEqual(metadata.version, VERSION);
+  assert.strictEqual(metadata.schema, 1);
+  assert(/^https:\/\//.test(metadata.installer_url));
+  assert(/^https:\/\//.test(metadata.changelog_url));
+})();
+
 (function testBundleSafetyAndEndpointGuards() {
   const bundle = fs.readFileSync(path.join(root, 'dist', 'SpotiSync.gs'), 'utf8');
   assert(!/\/playlists\/[^\n'"`]*\/tracks/.test(bundle));
@@ -183,10 +224,15 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert(!bundle.includes('user-library-modify'));
   assert(bundle.includes('/usercallback'));
   assert(bundle.includes('getJobReadResult'));
+  assert(bundle.includes('UPDATE_METADATA_URL'));
+  assert(!bundle.includes('https://www.googleapis.com/auth/script.projects'));
+  assert(!bundle.includes('script.googleapis.com/v1/projects/'));
+  assert(!/\beval\s*\(/.test(bundle));
 })();
 
 (function testPagesInstallerBuildsFromCommittedSource() {
   const siteScript = fs.readFileSync(path.join(root, 'docs', 'app.js'), 'utf8');
+  const siteHtml = fs.readFileSync(path.join(root, 'docs', 'index.html'), 'utf8');
   const expectedFiles = [
     '00_Core.gs',
     '10_Storage.gs',
@@ -197,6 +243,7 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
     '60_SheetStore.gs',
     '70_SyncEngine.gs',
     '80_Scheduler.gs',
+    '85_UpdateChecker.gs',
     '90_Ui.gs',
     '99_Entrypoints.gs'
   ];
@@ -205,6 +252,9 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert(siteScript.includes('raw.githubusercontent.com/11sid11/Spoti-sync/main/src/'));
   assert(siteScript.includes("document.execCommand('copy')"));
   assert(siteScript.includes("downloadText('SpotiSync.gs', bundle)"));
+  assert(siteHtml.includes('id="update"'));
+  assert(siteHtml.includes('data-copy-bundle'));
+  assert(siteHtml.includes('Updates are intentionally not installed silently.'));
 })();
 
 console.log('All Spoti Sync tests passed.');
