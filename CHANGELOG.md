@@ -2,6 +2,30 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.2.0 — 2026-08-15
+
+### Added
+
+- Automatic GitHub release-metadata checks through the existing daily scheduler, rate-limited to once every 24 hours.
+- Manual **Spoti Sync → Check for Updates** command.
+- Update status and last update-check time in the Dashboard and Jobs scheduler panel.
+- Guided update dialog with release notes and links to the updater/changelog.
+- Dedicated GitHub Pages section for updating an existing installation without repeating Spotify setup.
+- Semantic-version comparison and update-check behavior regression tests.
+- `docs/version.json` as the single published stable-release metadata record.
+
+### Security
+
+- Update checks download metadata only; they do not download, evaluate, or silently install executable code.
+- Spoti Sync still does not request the Apps Script `script.projects` scope or call `projects.updateContent`.
+- CI guards against accidentally introducing Apps Script project-write scope, self-update API calls, or dynamic `eval()` execution.
+
+### Changed
+
+- The existing daily scheduler performs update checks as best-effort work that cannot fail playlist synchronization.
+- The setup sidebar now displays update status and offers a manual update check.
+- The installer and browser-generated bundle now include `85_UpdateChecker.gs`.
+
 ## 1.1.0 — 2026-08-14
 
 ### Added
