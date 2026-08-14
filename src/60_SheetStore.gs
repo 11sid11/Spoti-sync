@@ -170,15 +170,15 @@ var SpotiSync = SpotiSync || {};
   }
 
   function legacyJobToStoredRow(row) {
-    var sourceType = ns.Core.trim(row[2]).toUpperCase();
-    var strategy = ns.Core.trim(row[5]).toUpperCase();
+    var sourceType = parseSourceLabel(row[2]);
+    var strategy = parseBehaviorLabel(row[5]);
     var intervalDays = Number(row[6]);
     return [
       normalizeBoolean(row[0]),
       ns.Core.trim(row[1]) || 'Spotify Sync',
-      sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? 'Playlist ↗' : 'Liked Songs',
+      sourceLabel(sourceType),
       'Open playlist ↗',
-      strategy === ns.Constants.STRATEGIES.APPEND ? 'Append Only' : 'Exact Mirror',
+      behaviorLabel(strategy),
       Number.isInteger(intervalDays) && intervalDays > 0 ? frequencyLabel(intervalDays) : ns.Core.trim(row[6]),
       '', '', newJobId(),
       sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? safePlaylistId(row[3]) : '',
@@ -202,6 +202,71 @@ var SpotiSync = SpotiSync || {};
       row[0] || '', ns.Core.trim(row[1]), ns.Core.trim(row[6]), Number(row[3] || 0),
       Number(row[4] || 0), Number(row[7] || 0), details, ''
     ];
+  }
+
+  function hasJobDefinition(row) {
+    return row.slice(1, JOB_COL.FREQUENCY).some(function (value) {
+      return value !== '' && value !== null;
+    });
+  }
+
+  function looksLikePartialLegacyJob(row) {
+    var strategy = ns.Core.trim(row[5]).toUpperCase();
+    var intervalDays = Number(row[6]);
+
+    if ([ns.Constants.STRATEGIES.MIRROR, ns.Constants.STRATEGIES.APPEND].indexOf(strategy) === -1) {
+      return false;
+    }
+    if (!Number.isInteger(intervalDays) || intervalDays < 1 || intervalDays > 3650) {
+      return false;
+    }
+
+    try {
+      parseSourceLabel(row[2]);
+      ns.Core.parsePlaylistId(row[4]);
+      return true;
+    } catch (ignored) {
+      return false;
+    }
+  }
+
+  function repairCurrentJobRows(rows) {
+    var repaired = [];
+    var changed = false;
+
+    rows.forEach(function (row) {
+      var current = row.slice(0, JOB_HEADERS.length);
+
+      // A failed v1.3.0 migration could leave the new headers in row 1 while
+      // row data was still in the v1.2 A:M layout. Recover that configuration
+      // instead of asking the user to paste playlist IDs again.
+      if (looksLikePartialLegacyJob(current)) {
+        repaired.push(legacyJobToStoredRow(current.slice(0, LEGACY_JOB_HEADERS.length)));
+        changed = true;
+        return;
+      }
+
+      // Old scheduler-panel values in O:P, plus health text generated from
+      // those remnants, can make otherwise empty rows look like disabled jobs.
+      // A real job always has definition data in B:F.
+      if (!hasJobDefinition(current)) {
+        if (!isBlankRow(current)) {
+          changed = true;
+        }
+        return;
+      }
+
+      if (!ns.Core.trim(current[JOB_COL.ID - 1])) {
+        current[JOB_COL.ID - 1] = newJobId();
+        changed = true;
+      }
+      repaired.push(current);
+    });
+
+    if (repaired.length !== rows.length) {
+      changed = true;
+    }
+    return { rows: repaired, changed: changed };
   }
 
   function replaceSheetData(sheet, headers, rows) {
@@ -235,6 +300,7 @@ var SpotiSync = SpotiSync || {};
     var header = sheet.getRange(1, 1, 1, width).getValues()[0];
     var isEmpty = lastRow === 0 || (lastRow === 1 && isBlankRow(header));
     var migratedRows = [];
+    var repairResult;
 
     if (isEmpty) {
       replaceSheetData(sheet, JOB_HEADERS, []);
@@ -245,7 +311,16 @@ var SpotiSync = SpotiSync || {};
           .map(legacyJobToStoredRow);
       }
       replaceSheetData(sheet, JOB_HEADERS, migratedRows);
-    } else if (!headersMatch(header, JOB_HEADERS)) {
+    } else if (headersMatch(header, JOB_HEADERS)) {
+      if (lastRow > 1) {
+        repairResult = repairCurrentJobRows(
+          sheet.getRange(2, 1, lastRow - 1, JOB_HEADERS.length).getValues()
+        );
+        if (repairResult.changed) {
+          replaceSheetData(sheet, JOB_HEADERS, repairResult.rows);
+        }
+      }
+    } else {
       throw new Error('The Jobs sheet layout is not recognized. Spoti Sync left it unchanged to avoid losing configuration.');
     }
     return sheet;
@@ -379,6 +454,13 @@ var SpotiSync = SpotiSync || {};
     }
   }
 
+  function refreshRunViews() {
+    if (!ns.SheetViews) { return; }
+    ns.SheetViews.refreshJobsStatus();
+    ns.SheetViews.refreshSchedule();
+    ns.SheetViews.refreshDashboard();
+  }
+
   ns.SheetStore = {
     jobHeaders: JOB_HEADERS.slice(),
     activityHeaders: ACTIVITY_HEADERS.slice(),
@@ -423,7 +505,6 @@ var SpotiSync = SpotiSync || {};
         now, now, warning ? 'Success with warning' : 'Success', Number(summary.added || 0),
         Number(summary.removed || 0), warning
       ]]);
-      if (ns.SheetViews) { ns.SheetViews.refreshJobsStatus(); }
     },
 
     updateJobError: function (job, error) {
@@ -431,7 +512,6 @@ var SpotiSync = SpotiSync || {};
       sheet.getRange(job.rowNumber, JOB_COL.LAST_ATTEMPT).setValue(new Date());
       sheet.getRange(job.rowNumber, JOB_COL.LAST_STATUS).setValue('Error');
       sheet.getRange(job.rowNumber, JOB_COL.LAST_ERROR).setValue(ns.Core.safeErrorMessage(error));
-      if (ns.SheetViews) { ns.SheetViews.refreshJobsStatus(); }
     },
 
     updateConfigurationError: function (configError) {
@@ -439,7 +519,6 @@ var SpotiSync = SpotiSync || {};
       sheet.getRange(configError.rowNumber, JOB_COL.LAST_ATTEMPT).setValue(new Date());
       sheet.getRange(configError.rowNumber, JOB_COL.LAST_STATUS).setValue('Configuration error');
       sheet.getRange(configError.rowNumber, JOB_COL.LAST_ERROR).setValue(configError.error);
-      if (ns.SheetViews) { ns.SheetViews.refreshJobsStatus(); }
     },
 
     appendActivity: function (entry) {
@@ -464,7 +543,9 @@ var SpotiSync = SpotiSync || {};
         LAST_LIKED_COUNT: String(summary.likedCount || 0),
         LAST_RUN_WARNINGS: String((summary.warnings || []).length)
       });
-      refreshViews();
+      // Render once after the complete run instead of re-rendering Jobs after
+      // every individual job result.
+      refreshRunViews();
     },
 
     refreshJobsStatus: function () { if (ns.SheetViews) { ns.SheetViews.refreshJobsStatus(); } },
@@ -484,6 +565,7 @@ var SpotiSync = SpotiSync || {};
     _parseJobRows: parseJobRows,
     _normalizeJob: normalizeJob,
     _legacyJobToStoredRow: legacyJobToStoredRow,
+    _repairCurrentJobRows: repairCurrentJobRows,
     _parseFrequency: parseFrequency,
     _parseBehaviorLabel: parseBehaviorLabel
   };
