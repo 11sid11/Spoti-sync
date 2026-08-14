@@ -12,6 +12,7 @@
     '60_SheetStore.gs',
     '70_SyncEngine.gs',
     '80_Scheduler.gs',
+    '85_UpdateChecker.gs',
     '90_Ui.gs',
     '99_Entrypoints.gs'
   ];
@@ -21,7 +22,7 @@
   const progressText = document.getElementById('progressText');
   const progressBar = document.getElementById('progressBar');
   const resetButton = document.getElementById('resetProgress');
-  const copyButton = document.getElementById('copyBundle');
+  const copyButtons = Array.from(document.querySelectorAll('[data-copy-bundle], #copyBundle'));
   const downloadButtons = Array.from(
     document.querySelectorAll('[data-download-bundle], a[href$="downloads/SpotiSync.gs"]')
   );
@@ -49,8 +50,12 @@
   function renderProgress() {
     const complete = checkboxes.filter((checkbox) => checkbox.checked).length;
     const percent = checkboxes.length === 0 ? 0 : Math.round((complete / checkboxes.length) * 100);
-    progressText.textContent = `${complete} of ${checkboxes.length} complete`;
-    progressBar.style.width = `${percent}%`;
+    if (progressText) {
+      progressText.textContent = `${complete} of ${checkboxes.length} complete`;
+    }
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+    }
   }
 
   async function fetchSource(filename) {
@@ -147,12 +152,17 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  function setStatus(message, isError = false) {
-    if (!copyStatus) {
+  function statusElementFor(button) {
+    const targetId = button && button.dataset ? button.dataset.statusTarget : '';
+    return targetId ? document.getElementById(targetId) : copyStatus;
+  }
+
+  function setStatus(message, isError = false, target = copyStatus) {
+    if (!target) {
       return;
     }
-    copyStatus.textContent = message;
-    copyStatus.dataset.state = isError ? 'error' : 'ok';
+    target.textContent = message;
+    target.dataset.state = isError ? 'error' : 'ok';
   }
 
   const saved = readProgress();
@@ -162,26 +172,31 @@
   });
   renderProgress();
 
-  resetButton.addEventListener('click', () => {
-    checkboxes.forEach((checkbox) => {
-      checkbox.checked = false;
+  if (resetButton) {
+    resetButton.addEventListener('click', () => {
+      checkboxes.forEach((checkbox) => {
+        checkbox.checked = false;
+      });
+      writeProgress();
     });
-    writeProgress();
-  });
+  }
 
-  copyButton.addEventListener('click', async () => {
-    copyButton.disabled = true;
-    setStatus('Building Apps Script from the source modules…');
-    try {
-      const bundle = await getBundle();
-      await copyText(bundle);
-      setStatus('Copied. Paste it into Code.gs in Apps Script.');
-    } catch (error) {
-      setStatus('Automatic copy was blocked. Use “Download Apps Script” instead.', true);
-      console.error('Bundle copy failed:', error);
-    } finally {
-      copyButton.disabled = false;
-    }
+  copyButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const status = statusElementFor(button);
+      button.disabled = true;
+      setStatus('Building Apps Script from the source modules…', false, status);
+      try {
+        const bundle = await getBundle();
+        await copyText(bundle);
+        setStatus('Copied. Paste it into Code.gs in Apps Script.', false, status);
+      } catch (error) {
+        setStatus('Automatic copy was blocked. Use “Download Apps Script” instead.', true, status);
+        console.error('Bundle copy failed:', error);
+      } finally {
+        button.disabled = false;
+      }
+    });
   });
 
   downloadButtons.forEach((button) => {
@@ -191,16 +206,17 @@
         return;
       }
 
+      const status = statusElementFor(button);
       button.dataset.busy = 'true';
       const originalText = button.textContent;
       button.textContent = 'Preparing…';
-      setStatus('Building Apps Script from the source modules…');
+      setStatus('Building Apps Script from the source modules…', false, status);
       try {
         const bundle = await getBundle();
         downloadText('SpotiSync.gs', bundle);
-        setStatus('Downloaded SpotiSync.gs.');
+        setStatus('Downloaded SpotiSync.gs.', false, status);
       } catch (error) {
-        setStatus('Could not build the installer. Open the GitHub source and try again.', true);
+        setStatus('Could not build the installer. Open the GitHub source and try again.', true, status);
         console.error('Bundle download failed:', error);
       } finally {
         delete button.dataset.busy;
