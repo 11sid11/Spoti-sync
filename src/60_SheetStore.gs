@@ -134,9 +134,10 @@ var SpotiSync = SpotiSync || {};
   function ensureDashboardSheet() {
     var sheet = getOrCreateSheet(ns.Constants.SHEETS.DASHBOARD);
     sheet.clearFormats();
+    sheet.getRange('A12:B14').breakApart().clearContent();
     sheet.getRange('A1:B1').merge();
     sheet.getRange('A1').setValue('Spoti Sync').setFontSize(20).setFontWeight('bold');
-    sheet.getRange('A3:A10').setFontWeight('bold');
+    sheet.getRange('A3:A11').setFontWeight('bold');
     sheet.setColumnWidth(1, 160);
     sheet.setColumnWidth(2, 360);
     return sheet;
@@ -347,10 +348,14 @@ var SpotiSync = SpotiSync || {};
       var status = ns.Storage.getDocumentStatus();
       var connected = ns.Auth && ns.Auth.isConnected ? ns.Auth.isConnected() : false;
       var schedulerEnabled = ns.Scheduler && ns.Scheduler.isEnabled ? ns.Scheduler.isEnabled() : false;
+      var updateStatus = ns.UpdateChecker && ns.UpdateChecker.getCachedStatus
+        ? ns.UpdateChecker.getCachedStatus()
+        : null;
       var rows = [
         ['Spotify', connected ? 'Connected' : 'Not connected'],
         ['Scheduler', schedulerEnabled ? 'Enabled (daily)' : 'Disabled'],
         ['Version', ns.VERSION],
+        ['Updates', updateStatus ? ns.UpdateChecker.statusLabel(updateStatus) : 'Not checked'],
         ['Last run', status.LAST_RUN_AT || 'Never'],
         ['Last status', status.LAST_RUN_STATUS || '—'],
         ['Last added', Number(status.LAST_RUN_ADDED || 0)],
@@ -358,9 +363,9 @@ var SpotiSync = SpotiSync || {};
         ['Last Liked Songs count', Number(status.LAST_LIKED_COUNT || 0)]
       ];
       sheet.getRange(3, 1, rows.length, 2).setValues(rows);
-      sheet.getRange('A12').setValue('Use the Spoti Sync menu to configure Spotify, add jobs, preview changes, sync now, or enable the scheduler.');
-      sheet.getRange('A12:B13').merge();
-      sheet.getRange('A12').setWrap(true);
+      sheet.getRange('A13:B14').merge();
+      sheet.getRange('A13').setValue('Use the Spoti Sync menu to configure Spotify, add jobs, preview changes, sync now, check for updates, or manage the scheduler.');
+      sheet.getRange('A13').setWrap(true);
     },
 
     _normalizeJob: normalizeJob,
