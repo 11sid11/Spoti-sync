@@ -11,7 +11,7 @@ Spoti Sync exists for a simple reason: Spotify's **Liked Songs** collection is u
 - **No Spotify client secret.** Authentication uses Authorization Code with PKCE.
 - **No runtime dependencies.** The installed Apps Script is plain JavaScript using built-in Google services.
 - **Low quota footprint.** One daily Apps Script trigger decides which configured jobs are due.
-- **Open source and inspectable.** The human-readable source lives in `src/`; users install a generated single-file bundle from `dist/SpotiSync.gs`.
+- **Open source and inspectable.** The human-readable source lives in `src/`; CI and GitHub Pages generate a single-file `SpotiSync.gs` installer from those modules.
 
 ## Included strategies
 
@@ -33,7 +33,7 @@ At a high level:
 
 1. Create a blank Google Sheet.
 2. Open **Extensions → Apps Script**.
-3. Replace `Code.gs` with the contents of [`dist/SpotiSync.gs`](dist/SpotiSync.gs).
+3. Use the GitHub Pages installer to copy or download the generated `SpotiSync.gs` bundle, then replace `Code.gs` with it.
 4. Save, reload the Sheet, and open **Spoti Sync → Setup**.
 5. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, and paste your Client ID.
 6. Authorize Spotify.
@@ -45,7 +45,7 @@ No web-app deployment, local server, Node.js installation, or `clasp` setup is r
 
 Spoti Sync requests only the Spotify capabilities needed to read library/playlist membership and modify configured playlists. It intentionally does **not** request permission to modify the user's Liked Songs library.
 
-Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's own copied script project. Playlist configuration and non-sensitive run history live in the bound Google Sheet.
+Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's own bound script project. Playlist configuration and non-sensitive run history live in the bound Google Sheet.
 
 See [`SECURITY.md`](SECURITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
 
@@ -58,7 +58,7 @@ node scripts/build.js
 node scripts/test.js
 ```
 
-`node scripts/build.js --check` verifies that committed generated files are current.
+`node scripts/build.js --check` can verify locally generated artifacts without rewriting them. CI performs a fresh build before running tests.
 
 ## Current platform constraints
 
