@@ -264,7 +264,7 @@ function jobRow(overrides = {}) {
     version: '1.3.0',
     channel: 'stable',
     released_at: '2026-08-15',
-    installer_url: 'https://sid.is-a.dev/Spoti-sync/docs/#update',
+    installer_url: 'https://sid.is-a.dev/Spoti-sync/#update',
     changelog_url: 'https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md',
     notes: ['One', 'Two']
   });
@@ -276,7 +276,7 @@ function jobRow(overrides = {}) {
   const metadata = JSON.parse(fs.readFileSync(path.join(root, 'docs', 'version.json'), 'utf8'));
   assert.strictEqual(metadata.version, VERSION);
   assert.strictEqual(metadata.schema, 1);
-  assert.strictEqual(metadata.installer_url, 'https://sid.is-a.dev/Spoti-sync/docs/#update');
+  assert.strictEqual(metadata.installer_url, 'https://sid.is-a.dev/Spoti-sync/#update');
   assert.strictEqual(Constants.PROJECT_URL, 'https://sid.is-a.dev/Spoti-sync/');
   assert.strictEqual(Constants.HEARTBEAT_SIGNATURE, 'sid.is-a.dev');
 })();

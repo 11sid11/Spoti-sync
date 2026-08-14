@@ -2,22 +2,21 @@
 
 ## Goals
 
-Spoti Sync is intentionally optimized for a small operational footprint:
+Spoti Sync is optimized for a small operational footprint:
 
-- no hosted application server;
-- no central user database;
+- no hosted application server or central user database;
 - no shared Spotify credentials;
 - no always-on user device;
 - no runtime package manager;
-- a single scheduled trigger per installation;
+- one scheduled trigger per installation;
 - source and strategy abstractions that remain easy to extend.
 
 ## Deployment model
 
 ```text
-GitHub Pages / repository
+sid.is-a.dev / GitHub Pages
         |
-        | setup instructions + install bundle
+        | setup instructions + browser-built install bundle
         v
 User's Google Sheet
         |
@@ -26,116 +25,117 @@ User's Google Sheet
               +-- OAuth + PKCE
               +-- Spotify API client
               +-- sync engine
+              +-- playlist heartbeat
               +-- daily scheduler
-              +-- configuration + logging
+              +-- Sheet UI + activity
                     |
                     v
               Spotify Web API
-                    |
-                    v
-              User's Spotify account
 ```
 
-The GitHub Pages site is static. It never receives Spotify tokens, Google tokens, playlist contents, or user configuration.
+The static site never receives Spotify tokens, Google tokens, playlist contents, or job configuration.
 
 ## Storage boundaries
 
 ### Apps Script User Properties
 
-Sensitive or user-scoped runtime values:
-
-- Spotify Client ID (not secret, but user-specific configuration)
-- Spotify refresh token
-- Spotify access token
+- Spotify Client ID
+- Spotify refresh/access tokens
 - access-token expiry
 - authorization timestamp
 - temporary PKCE verifier
 
+Replacing `Code.gs` and rebuilding Sheet layouts does not clear User Properties.
+
 ### Bound Google Sheet
 
-Inspectable, non-secret application state:
+- `Dashboard` — system health, latest run, next automation, recent activity
+- `Jobs` — visible job controls/status plus hidden stable job IDs, playlist IDs, and per-job telemetry
+- `Schedule` — scheduler state and upcoming eligible jobs
+- `Activity` — bounded execution history
 
-- `Dashboard` — summarized installation and last-run status
-- `Jobs` — sync job configuration and per-job run status
-- `History` — bounded synchronization history
+### Document Properties
+
+- scheduler telemetry
+- update-check cache/status
+- run summary
+- one tiny heartbeat phrase index per stable job ID
 
 ### GitHub
 
-Only source code, generated install artifacts, static documentation, tests, and CI configuration.
+Source, static documentation, tests, CI, and release metadata only.
+
+## Job identity and layout
+
+Each job receives a stable opaque `job_<id>` when created or when a pre-1.3 row is migrated. Runtime state such as heartbeat rotation keys off that ID rather than the row number. Rows may therefore move without changing job identity.
+
+The visible Jobs columns favor human-readable values (`Liked Songs`, `Exact Mirror`, `Daily`, health and eligibility). Spotify playlist IDs and telemetry are retained in hidden columns; the visible playlist cells link to Spotify.
 
 ## Runtime model
 
-A single Apps Script time-driven trigger invokes `spotiSyncScheduler()` once per day. The scheduler reads enabled jobs and executes only jobs that are due according to their `Interval Days` value.
+A single time-driven trigger invokes `spotiSyncScheduler()` once per day. The scheduler reads enabled jobs and runs only jobs that are due according to their frequency.
 
-Source snapshots are cached for the lifetime of one scheduler execution. If five jobs all use Liked Songs, the source library is fetched once and reused by all five jobs.
+Source snapshots are cached for one execution. Multiple jobs using Liked Songs reuse the same fetched source snapshot.
 
-## Source contract
+## Sync execution
 
-A source returns:
+For each job:
 
 ```text
-{
-  key: stable source cache key,
-  ordering: NEWEST_FIRST | PRESERVE,
-  tracks: [
-    {
-      keyUri: canonical comparison URI,
-      writeUri: URI safe to send back to Spotify,
-      name: display metadata,
-      artists: display metadata,
-      addedAt: optional timestamp
-    }
-  ],
-  ignoredCount: number
-}
+fetch source + target
+        ↓
+plan MIRROR / APPEND
+        ↓
+apply playlist item removals/additions
+        ↓
+update target playlist description heartbeat
+        ↓
+record job telemetry + Activity row
 ```
 
-Initial source implementations:
+The description request is deliberately after playlist-item writes but inside the same job execution. A failed track mutation therefore cannot leave a misleading fresh heartbeat. A description-only failure is non-fatal and produces `Success with warning`.
 
-- `LIKED_SONGS`
-- `PLAYLIST`
+## Playlist heartbeat
+
+`75_PlaylistHeartbeat.gs` owns formatting and phrase rotation. It generates:
+
+```text
+[rotating Spoti Sync phrase] · sid.is-a.dev · Synced [weekday] at [time]
+```
+
+The timestamp uses the spreadsheet timezone. Phrase state advances only after Spotify accepts `PUT /playlists/{id}`. The request body contains `description` only; Spoti Sync does not send a replacement playlist name.
 
 ## Strategy contract
 
-A strategy is pure planning logic. It receives normalized source and target snapshots and returns a plan:
-
-```text
-{
-  add: [track records],
-  remove: [Spotify URIs],
-  ignored: number
-}
-```
-
-Initial strategies:
+Strategies remain pure planning logic.
 
 ### MIRROR
 
-- remove managed target tracks that are absent from the source;
-- add source tracks that are absent from the target;
-- repair duplicate managed target tracks by removing all occurrences of that canonical item and adding one source copy back;
-- do not touch unsupported/non-track playlist items such as local files or episodes;
-- add missing Liked Songs tracks at the front while preserving source ordering.
-
-`MIRROR` guarantees managed Spotify-track membership, not continuous whole-playlist reordering.
+- remove managed target tracks absent from the source;
+- add missing source tracks;
+- repair duplicate managed target tracks;
+- leave unsupported/non-track items alone;
+- insert missing Liked Songs tracks at the front while preserving source order.
 
 ### APPEND
 
 - never remove target items;
-- append only source tracks not already represented in the target;
-- for `NEWEST_FIRST` sources such as Liked Songs, append missing tracks oldest-to-newest so the archive grows chronologically.
+- append only missing source tracks;
+- for newest-first sources, append missing tracks oldest-to-newest.
 
 ## Concurrency and retries
 
-- A script lock prevents manual and scheduled synchronization from overlapping.
-- Spotify `401` responses trigger one forced access-token refresh and retry.
-- Spotify `429` responses honor `Retry-After` when it is small enough to remain practical within Apps Script execution limits.
-- transient Spotify `5xx` errors use capped retry/backoff.
-- one failing job is logged and does not prevent later jobs from running.
+- A script lock prevents overlapping manual/scheduled writes.
+- Spotify `401` triggers one forced token refresh and retry.
+- Spotify `429` honors practical `Retry-After` values.
+- transient `5xx` responses use capped backoff.
+- one failed job does not stop later jobs.
+- heartbeat failures are warnings and do not cause playlist mutations to be replayed.
 
 ## Safety properties
 
-- The OAuth scope list excludes `user-library-modify`, so Spoti Sync cannot unlike or save tracks in the user's library.
-- OAuth tokens are never written to Sheet cells or application logs.
-- API errors are sanitized before logging.
-- Sync writes are limited to playlists explicitly configured as targets.
+- OAuth scopes exclude `user-library-modify`; Spoti Sync cannot unlike/save library tracks.
+- OAuth tokens never go to Sheet cells or application logs.
+- API errors are sanitized before Sheet logging.
+- playlist writes are limited to explicitly configured targets.
+- update checks never request `script.projects` or execute remote code.
