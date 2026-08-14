@@ -50,16 +50,13 @@ function writeOrCheck(filePath, expected, checkOnly) {
 
 const checkOnly = process.argv.includes('--check');
 const bundle = buildBundle();
-const outputs = [
-  path.join(root, 'dist', 'SpotiSync.gs'),
-  path.join(root, 'docs', 'downloads', 'SpotiSync.gs')
-];
+const output = path.join(root, 'dist', 'SpotiSync.gs');
 
-outputs.forEach((filePath) => writeOrCheck(filePath, bundle, checkOnly));
+writeOrCheck(output, bundle, checkOnly);
 
 // Parse the complete bundle with the standard JavaScript parser used by Node.
 // Apps Script globals are referenced only inside functions, so syntax validation
 // does not require mocking Google services.
 new Function(bundle);
 
-console.log(checkOnly ? 'Generated files are current.' : 'Generated SpotiSync.gs bundle.');
+console.log(checkOnly ? 'Generated file is current.' : 'Generated SpotiSync.gs bundle.');
