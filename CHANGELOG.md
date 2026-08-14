@@ -2,6 +2,25 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.2 — 2026-08-15
+
+### Fixed
+
+- Added a repair path for partially migrated v1.3 Jobs sheets where the new headers were present but row data was still in the v1.2 layout. Existing target/source playlist IDs are recovered in place instead of asking the user to paste them again.
+- Removed hidden scheduler-panel remnants and generated health cells that could appear as multiple phantom `○ Disabled` jobs.
+- Jobs styling now clears legacy validation across the visible editable columns before applying the v1.3 rules. `Frequency` can no longer inherit the old `MIRROR` / `APPEND` Strategy dropdown.
+- Added a clear Frequency header note describing the accepted `Daily` / `Every N days` format.
+
+### Performance
+
+- Enabling or disabling the daily scheduler now refreshes only **Schedule** and **Dashboard** instead of reformatting Jobs and Activity as well.
+- Sync result writes no longer redraw Jobs after every individual job. Dashboard, Jobs, and Schedule are refreshed once after the complete run.
+- Added dedicated regression coverage for partial migration recovery, stale Frequency validation, scheduler-targeted refreshes, and batched result rendering.
+
+### Upgrade note
+
+- Install the 1.3.2 bundle in the same Apps Script project and run **Spoti Sync → Initialize / Repair Sheets** once. The repair keeps existing Spotify Client ID, OAuth tokens, and recoverable playlist IDs.
+
 ## 1.3.1 — 2026-08-15
 
 ### Fixed

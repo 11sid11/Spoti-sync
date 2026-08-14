@@ -75,7 +75,8 @@ var SpotiSync = SpotiSync || {};
   function styleJobsSheet(sheet) {
     var columns = ns.SheetStore._jobColumns;
     var width = ns.SheetStore.jobHeaders.length;
-    var rows = Math.max(sheet.getMaxRows() - 1, 1);
+    var maxDataRows = Math.max(sheet.getMaxRows() - 1, 1);
+    var validationRows = Math.min(maxDataRows, Math.max(sheet.getLastRow() + 49, 50));
     var checkbox = SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build();
     var source = SpreadsheetApp.newDataValidation()
       .requireValueInList(['Liked Songs', 'Playlist ↗'], true).setAllowInvalid(false).build();
@@ -87,10 +88,17 @@ var SpotiSync = SpotiSync || {};
     sheet.setTabColor(COLORS.GREEN);
     styleTableHeader(sheet.getRange(1, 1, 1, width));
     sheet.setRowHeight(1, 32);
-    sheet.getRange(2, 1, rows, 1).setDataValidation(checkbox);
-    sheet.getRange(2, columns.SOURCE, rows, 1).setDataValidation(source);
-    sheet.getRange(2, columns.BEHAVIOR, rows, 1).setDataValidation(behavior);
-    sheet.getRange(2, columns.HEALTH, rows, 2).setBackground(COLORS.LIGHT);
+
+    // Always remove legacy validation from the visible editable columns first.
+    // In v1.2 column F was Strategy; in v1.3 it is Frequency. Without this,
+    // partially migrated sheets can incorrectly show MIRROR / APPEND in F.
+    sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();
+    sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);
+    sheet.getRange(2, columns.SOURCE, validationRows, 1).setDataValidation(source);
+    sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);
+    sheet.getRange(1, columns.FREQUENCY).setNote('Use Daily or Every N days, for example Every 10 days.');
+
+    sheet.getRange(2, columns.HEALTH, maxDataRows, 2).setBackground(COLORS.LIGHT);
     sheet.setColumnWidth(columns.ENABLED, 74);
     sheet.setColumnWidth(columns.NAME, 210);
     sheet.setColumnWidth(columns.SOURCE, 135);

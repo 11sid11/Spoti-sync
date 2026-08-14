@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "version": "1.3.1",
+  "version": "1.3.2",
   "channel": "stable",
   "released_at": "2026-08-15",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Fixes the v1.2-to-v1.3 Jobs migration when old Google Sheets validation rules are still present.",
-    "Fixes the sheet-tab styling error caused by chaining after setFrozenRows().",
-    "Makes layout migration write the converted dataset before clearing trailing legacy cells.",
-    "Keeps Spotify Client ID and OAuth tokens untouched in Apps Script User Properties."
+    "Repairs partially migrated Jobs sheets without asking for Spotify playlist IDs again.",
+    "Removes stale v1.2 validation so Frequency no longer shows the MIRROR / APPEND dropdown.",
+    "Removes phantom disabled jobs left by the old scheduler panel.",
+    "Reduces scheduler and sync Sheet re-rendering to avoid unnecessary delays and timeouts."
   ]
 }
