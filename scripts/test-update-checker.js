@@ -83,6 +83,17 @@ const { UpdateChecker, VERSION } = context.SpotiSync;
   assert.strictEqual(status.latestVersion, '1.3.0');
 })();
 
+(function testCachedAvailabilityRecomputesAfterCodeUpgrade() {
+  const installedVersion = context.SpotiSync.VERSION;
+  context.SpotiSync.VERSION = '1.3.0';
+  const status = UpdateChecker.getCachedStatus();
+  assert.strictEqual(status.currentVersion, '1.3.0');
+  assert.strictEqual(status.latestVersion, '1.3.0');
+  assert.strictEqual(status.updateAvailable, false);
+  assert.strictEqual(status.checkStatus, 'Up to date');
+  context.SpotiSync.VERSION = installedVersion;
+})();
+
 (function testForcedCheckCanMarkCurrent() {
   responseBody = {
     ...responseBody,
@@ -109,6 +120,19 @@ const { UpdateChecker, VERSION } = context.SpotiSync;
     /HTTP 503/
   );
   assert.strictEqual(fetchCount, 4);
+})();
+
+(function testFailedCheckRetriesAfterShorterWindow() {
+  responseStatus = 200;
+  responseBody = {
+    ...responseBody,
+    version: '1.3.0'
+  };
+  documentStatus.UPDATE_LAST_CHECK_AT = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const status = UpdateChecker.check({ force: false });
+  assert.strictEqual(fetchCount, 5, 'A failed check older than the retry window must fetch again.');
+  assert.strictEqual(status.updateAvailable, true);
+  assert.strictEqual(status.checkStatus, 'Update available');
 })();
 
 console.log('Update checker behavior tests passed.');
