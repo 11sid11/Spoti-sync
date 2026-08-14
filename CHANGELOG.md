@@ -2,6 +2,20 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.1 — 2026-08-15
+
+### Fixed
+
+- Fixed the v1.2 → v1.3 Jobs migration when legacy Google Sheets data-validation rules were still attached to cells such as `C2`. The migration now explicitly clears old validation rules before writing friendly v1.3 labels such as `Liked Songs` and `Exact Mirror`.
+- Fixed `TypeError: Cannot read properties of null (reading 'setTabColor')` during sheet styling. Apps Script's `setFrozenRows()` does not return a chainable `Sheet`, so tab styling now uses separate method calls.
+- Made sheet migration safer by writing the converted dataset before clearing trailing legacy cells instead of destructively clearing the sheet first.
+- Added regression guards for both migration-validation handling and non-chainable Sheet method usage.
+
+### Upgrade note
+
+- Existing Spotify Client ID and OAuth tokens remain in Apps Script User Properties and are not changed by this hotfix.
+- After installing 1.3.1, run **Spoti Sync → Initialize / Repair Sheets** again to finish the Dashboard / Jobs / Schedule / Activity layout setup.
+
 ## 1.3.0 — 2026-08-15
 
 ### Added
