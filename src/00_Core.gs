@@ -5,13 +5,15 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.1.0';
+  ns.VERSION = '1.2.0';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
     SPOTIFY_API_BASE: 'https://api.spotify.com/v1',
     SPOTIFY_ACCOUNTS_BASE: 'https://accounts.spotify.com',
     SPOTIFY_DASHBOARD_URL: 'https://developer.spotify.com/dashboard',
+    UPDATE_METADATA_URL: 'https://raw.githubusercontent.com/11sid11/Spoti-sync/main/docs/version.json',
+    UPDATE_CHECK_INTERVAL_MS: 24 * 60 * 60 * 1000,
     SPOTIFY_SCOPES: [
       'user-library-read',
       'playlist-read-private',
