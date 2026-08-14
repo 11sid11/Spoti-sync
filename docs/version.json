@@ -1,3 +1,13 @@
 {
-  "latest": "1.0.0"
+  "schema": 1,
+  "version": "1.2.0",
+  "channel": "stable",
+  "released_at": "2026-08-15",
+  "installer_url": "https://sid.is-a.dev/Spoti-sync/docs/#update",
+  "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
+  "notes": [
+    "Automatically checks GitHub for new Spoti Sync versions.",
+    "Shows update status in the Dashboard and Jobs scheduler panel.",
+    "Adds a guided Check for Updates flow without granting script-project write access."
+  ]
 }
