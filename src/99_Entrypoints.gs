@@ -13,6 +13,7 @@ function onOpen() {
     .addItem('Enable Daily Scheduler', 'spotiSyncEnableSchedulerFromMenu')
     .addItem('Disable Scheduler', 'spotiSyncDisableSchedulerFromMenu')
     .addSeparator()
+    .addItem('Check for Updates', 'spotiSyncCheckForUpdates')
     .addItem('Initialize / Repair Sheets', 'spotiSyncInitializeSheetsFromMenu')
     .addItem('About', 'spotiSyncAbout')
     .addToUi();
@@ -42,6 +43,7 @@ function spotiSyncGetSetupStatus() {
   'use strict';
   var clientId = SpotiSync.Storage.getClientId();
   var scheduler = SpotiSync.Scheduler.getStatus();
+  var update = SpotiSync.UpdateChecker.getCachedStatus();
   return {
     connected: SpotiSync.Auth.isConnected(),
     schedulerEnabled: scheduler.enabled,
@@ -49,6 +51,10 @@ function spotiSyncGetSetupStatus() {
     schedulerSchedule: scheduler.schedule,
     schedulerLastCheckAt: scheduler.lastCheckAt,
     schedulerLastCheckStatus: scheduler.lastCheckStatus,
+    updateAvailable: update.updateAvailable,
+    updateLabel: SpotiSync.UpdateChecker.statusLabel(update),
+    updateLatestVersion: update.latestVersion,
+    updateLastCheckAt: update.checkedAt,
     redirectUri: SpotiSync.Auth.getRedirectUri(),
     clientId: clientId ? ('Configured: …' + clientId.slice(-6)) : ''
   };
@@ -133,6 +139,19 @@ function spotiSyncDisableSchedulerFromMenu() {
   'use strict';
   SpotiSync.Scheduler.disable();
   SpreadsheetApp.getUi().alert('Spoti Sync', 'Scheduler disabled. The Jobs sheet scheduler panel has been updated.', SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function spotiSyncCheckForUpdatesStatus() {
+  'use strict';
+  var status = SpotiSync.UpdateChecker.check({ force: true });
+  SpotiSync.SheetStore.refreshDashboard();
+  SpotiSync.Scheduler.refreshPanel();
+  return status;
+}
+
+function spotiSyncCheckForUpdates() {
+  'use strict';
+  SpotiSync.Ui.showUpdateCheck();
 }
 
 function spotiSyncAbout() {
