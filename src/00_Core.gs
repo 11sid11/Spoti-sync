@@ -14,6 +14,7 @@ var SpotiSync = SpotiSync || {};
     SPOTIFY_DASHBOARD_URL: 'https://developer.spotify.com/dashboard',
     UPDATE_METADATA_URL: 'https://raw.githubusercontent.com/11sid11/Spoti-sync/main/docs/version.json',
     UPDATE_CHECK_INTERVAL_MS: 24 * 60 * 60 * 1000,
+    UPDATE_ERROR_RETRY_MS: 60 * 60 * 1000,
     SPOTIFY_SCOPES: [
       'user-library-read',
       'playlist-read-private',
