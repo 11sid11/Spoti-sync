@@ -11,6 +11,7 @@ Spoti Sync exists for a simple reason: Spotify's **Liked Songs** collection is u
 - **No Spotify client secret.** Authentication uses Authorization Code with PKCE.
 - **No runtime dependencies.** The installed Apps Script is plain JavaScript using built-in Google services.
 - **Low quota footprint.** One daily Apps Script trigger decides which configured jobs are due.
+- **Visible scheduler state.** The Jobs sheet shows whether the cloud scheduler is enabled, how many Spoti Sync triggers exist, its daily execution window, the last background check, and the next due job.
 - **Open source and inspectable.** Human-readable source lives in `src/`; the GitHub Pages installer assembles the one-file `SpotiSync.gs` bundle directly from those committed modules in the user's browser.
 
 ## Included strategies
@@ -25,6 +26,22 @@ The default use cases are:
 1. **Liked Songs → MIRROR → Shareable Likes**, daily.
 2. **Liked Songs → APPEND → Likes Archive**, every 10 days.
 
+## Scheduler visibility
+
+Spoti Sync uses exactly one clock trigger named `spotiSyncScheduler`. Enabling the scheduler is idempotent: the script removes any existing Spoti Sync scheduler triggers before creating one replacement trigger, so repeated clicks do not stack duplicate daily jobs.
+
+The **Jobs** sheet keeps the A:M job table unchanged and adds a scheduler panel in **O:P** showing:
+
+- enabled / disabled state;
+- the daily Apps Script execution window and spreadsheet timezone;
+- that execution happens in the Google Apps Script cloud;
+- the actual Spoti Sync scheduler trigger count;
+- the last scheduler check and result;
+- the next due enabled job;
+- where per-job attempt/success/add/remove/error telemetry is recorded.
+
+Google Apps Script selects a time within the configured hourly window and then keeps that recurring timing approximately consistent. Spoti Sync currently configures the 03:00 hour in the spreadsheet timezone.
+
 ## Installation
 
 Use the guided GitHub Pages installer. The site is static and does not receive Spotify or Google credentials.
@@ -38,6 +55,7 @@ At a high level:
 5. Reload the Sheet and open **Spoti Sync → Setup**.
 6. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, and paste your Client ID.
 7. Authorize Spotify, add sync jobs, preview changes, then enable the daily scheduler.
+8. Open the **Jobs** sheet to confirm the scheduler panel says **Enabled** and `Trigger count` is `1`.
 
 No web-app deployment, local server, Node.js installation, or `clasp` setup is required for end users.
 
@@ -56,6 +74,7 @@ The source is split into Apps Script-friendly modules under `src/`. A dependency
 ```bash
 node scripts/build.js
 node scripts/test.js
+node scripts/test-scheduler.js
 ```
 
 The generated local bundle lives under ignored `dist/`; production installation does not depend on committing or publishing generated code.
