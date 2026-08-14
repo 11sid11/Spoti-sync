@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 
   var HANDLER = 'spotiSyncScheduler';
   var PANEL_START_COLUMN = 15; // O
-  var PANEL_ROWS = 8;
+  var PANEL_ROWS = 9;
 
   function schedulerTriggers() {
     return ScriptApp.getProjectTriggers().filter(function (trigger) {
@@ -97,6 +97,7 @@ var SpotiSync = SpotiSync || {};
       ['Last scheduler check', formatTimestamp(status.SCHEDULER_LAST_CHECK_AT, timezone)],
       ['Last check status', status.SCHEDULER_LAST_CHECK_STATUS || '—'],
       ['Next due job', nextDueLabel(readResult, new Date(), timezone)],
+      ['Job telemetry', 'Columns H:M show attempt, success, status, added, removed, and errors'],
       ['Control', 'Spoti Sync menu → Enable / Disable / Sync Now']
     ];
 
