@@ -185,4 +185,26 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert(bundle.includes('getJobReadResult'));
 })();
 
+(function testPagesInstallerBuildsFromCommittedSource() {
+  const siteScript = fs.readFileSync(path.join(root, 'docs', 'app.js'), 'utf8');
+  const expectedFiles = [
+    '00_Core.gs',
+    '10_Storage.gs',
+    '20_SpotifyAuth.gs',
+    '30_SpotifyApi.gs',
+    '40_Sources.gs',
+    '50_Strategies.gs',
+    '60_SheetStore.gs',
+    '70_SyncEngine.gs',
+    '80_Scheduler.gs',
+    '90_Ui.gs',
+    '99_Entrypoints.gs'
+  ];
+
+  expectedFiles.forEach((filename) => assert(siteScript.includes(`'${filename}'`)));
+  assert(siteScript.includes('raw.githubusercontent.com/11sid11/Spoti-sync/main/src/'));
+  assert(siteScript.includes("document.execCommand('copy')"));
+  assert(siteScript.includes("downloadText('SpotiSync.gs', bundle)"));
+})();
+
 console.log('All Spoti Sync tests passed.');
