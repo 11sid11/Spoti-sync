@@ -120,8 +120,7 @@ var SpotiSync = SpotiSync || {};
       method: 'get',
       muteHttpExceptions: true,
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Spoti-Sync/' + ns.VERSION
+        Accept: 'application/json'
       }
     });
     var status = response.getResponseCode();
@@ -152,11 +151,26 @@ var SpotiSync = SpotiSync || {};
 
   function cachedStatus() {
     var status = ns.Storage.getDocumentStatus();
+    var latestVersion = status[STATUS_KEYS.LATEST_VERSION] || '';
+    var checkStatus = status[STATUS_KEYS.CHECK_STATUS] || 'Not checked';
+    var updateAvailable = false;
+
+    if (latestVersion) {
+      try {
+        updateAvailable = compareVersions(latestVersion, ns.VERSION) > 0;
+        if (!updateAvailable && checkStatus === 'Update available') {
+          checkStatus = 'Up to date';
+        }
+      } catch (ignored) {
+        latestVersion = '';
+      }
+    }
+
     return {
       currentVersion: ns.VERSION,
-      latestVersion: status[STATUS_KEYS.LATEST_VERSION] || '',
-      updateAvailable: status[STATUS_KEYS.AVAILABLE] === 'true',
-      checkStatus: status[STATUS_KEYS.CHECK_STATUS] || 'Not checked',
+      latestVersion: latestVersion,
+      updateAvailable: updateAvailable,
+      checkStatus: checkStatus,
       checkedAt: status[STATUS_KEYS.LAST_CHECK_AT] || '',
       installerUrl: status[STATUS_KEYS.INSTALLER_URL] || '',
       changelogUrl: status[STATUS_KEYS.CHANGELOG_URL] || '',
@@ -177,7 +191,10 @@ var SpotiSync = SpotiSync || {};
     if (isNaN(checkedAt.getTime())) {
       return true;
     }
-    return Date.now() - checkedAt.getTime() >= ns.Constants.UPDATE_CHECK_INTERVAL_MS;
+    var interval = cached.checkStatus === 'Check failed'
+      ? ns.Constants.UPDATE_ERROR_RETRY_MS
+      : ns.Constants.UPDATE_CHECK_INTERVAL_MS;
+    return Date.now() - checkedAt.getTime() >= interval;
   }
 
   function persistSuccess(metadata) {
