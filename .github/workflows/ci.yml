@@ -21,5 +21,7 @@ jobs:
           package-manager-cache: false
       - name: Build installer bundle
         run: node scripts/build.js
-      - name: Run tests
+      - name: Run core tests
         run: node scripts/test.js
+      - name: Run scheduler visibility checks
+        run: node scripts/test-scheduler.js
