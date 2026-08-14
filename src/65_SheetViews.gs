@@ -18,12 +18,19 @@ var SpotiSync = SpotiSync || {};
     var ss = spreadsheet();
     var sheet = ss.getSheetByName(name);
     if (sheet) { return sheet; }
-    if (name === ns.Constants.SHEETS.DASHBOARD && ss.getSheets().length === 1) {
-      var only = ss.getSheets()[0];
-      if (only.getLastRow() === 0 ||
-          (only.getLastRow() === 1 && only.getLastColumn() === 1 && !only.getRange(1, 1).getValue())) {
-        only.setName(name);
-        return only;
+    if (name === ns.Constants.SHEETS.DASHBOARD) {
+      // A brand-new spreadsheet starts with one empty tab. Jobs/Activity may
+      // already have been created by the time views are rendered, so reuse
+      // the still-empty active tab instead of leaving an orphaned Sheet1.
+      var candidate = ss.getActiveSheet();
+      var reservedNames = Object.keys(ns.Constants.SHEETS).map(function (key) {
+        return ns.Constants.SHEETS[key];
+      });
+      if (candidate && reservedNames.indexOf(candidate.getName()) === -1 &&
+          candidate.getLastRow() === 0 && candidate.getLastColumn() === 1 &&
+          !candidate.getRange(1, 1).getValue()) {
+        candidate.setName(name);
+        return candidate;
       }
     }
     return ss.insertSheet(name);
