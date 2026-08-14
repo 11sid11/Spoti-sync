@@ -5,10 +5,12 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.2.0';
+  ns.VERSION = '1.3.0';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
+    PROJECT_URL: 'https://sid.is-a.dev/Spoti-sync/',
+    HEARTBEAT_SIGNATURE: 'sid.is-a.dev',
     SPOTIFY_API_BASE: 'https://api.spotify.com/v1',
     SPOTIFY_ACCOUNTS_BASE: 'https://accounts.spotify.com',
     SPOTIFY_DASHBOARD_URL: 'https://developer.spotify.com/dashboard',
@@ -24,14 +26,15 @@ var SpotiSync = SpotiSync || {};
     ],
     PAGE_SIZE: 50,
     WRITE_BATCH_SIZE: 100,
-    MAX_HISTORY_ROWS: 1000,
+    MAX_ACTIVITY_ROWS: 1000,
     MAX_RETRY_AFTER_SECONDS: 30,
     TOKEN_EXPIRY_SKEW_MS: 60 * 1000,
     DEFAULT_SCHEDULER_HOUR: 3,
     SHEETS: Object.freeze({
       DASHBOARD: 'Dashboard',
       JOBS: 'Jobs',
-      HISTORY: 'History'
+      SCHEDULE: 'Schedule',
+      ACTIVITY: 'Activity'
     }),
     SOURCE_TYPES: Object.freeze({
       LIKED_SONGS: 'LIKED_SONGS',

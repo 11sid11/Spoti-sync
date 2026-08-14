@@ -22,21 +22,22 @@ function onOpen() {
 function spotiSyncSetup() {
   'use strict';
   SpotiSync.Ui.showSetup();
-  SpotiSync.Scheduler.refreshPanel();
 }
 
 function spotiSyncInitializeSheets() {
   'use strict';
   SpotiSync.SheetStore.initialize();
-  SpotiSync.Scheduler.refreshPanel();
   return true;
 }
 
 function spotiSyncInitializeSheetsFromMenu() {
   'use strict';
   SpotiSync.SheetStore.initialize();
-  SpotiSync.Scheduler.refreshPanel();
-  SpreadsheetApp.getUi().alert('Spoti Sync', 'Dashboard, Jobs, and History sheets are ready.', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert(
+    'Spoti Sync',
+    'Dashboard, Jobs, Schedule, and Activity are ready. Existing Spotify credentials and job playlist IDs were kept.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 function spotiSyncGetSetupStatus() {
@@ -74,8 +75,7 @@ function spotiSyncOAuthCallback(event) {
 function spotiSyncDisconnect() {
   'use strict';
   SpotiSync.Auth.disconnect();
-  SpotiSync.SheetStore.refreshDashboard();
-  SpotiSync.Scheduler.refreshPanel();
+  SpotiSync.SheetStore.refreshAllViews();
   return true;
 }
 
@@ -84,7 +84,6 @@ function spotiSyncAddJob() {
   try {
     SpotiSync.SheetStore.initialize();
     SpotiSync.Ui.promptAddJob();
-    SpotiSync.Scheduler.refreshPanel();
   } catch (error) {
     SpreadsheetApp.getUi().alert('Could not add job', SpotiSync.Core.safeErrorMessage(error), SpreadsheetApp.getUi().ButtonSet.OK);
   }
@@ -94,7 +93,6 @@ function spotiSyncPreviewEnabledJobs() {
   'use strict';
   try {
     SpotiSync.Ui.showPreview();
-    SpotiSync.Scheduler.refreshPanel();
   } catch (error) {
     SpreadsheetApp.getUi().alert('Preview failed', SpotiSync.Core.safeErrorMessage(error), SpreadsheetApp.getUi().ButtonSet.OK);
   }
@@ -104,7 +102,6 @@ function spotiSyncRunNow() {
   'use strict';
   try {
     SpotiSync.Ui.showRunNow();
-    SpotiSync.Scheduler.refreshPanel();
   } catch (error) {
     SpreadsheetApp.getUi().alert('Sync failed', SpotiSync.Core.safeErrorMessage(error), SpreadsheetApp.getUi().ButtonSet.OK);
   }
@@ -125,7 +122,7 @@ function spotiSyncEnableSchedulerFromMenu() {
   SpotiSync.Scheduler.enable();
   SpreadsheetApp.getUi().alert(
     'Spoti Sync',
-    'Daily scheduler enabled. Spoti Sync keeps exactly one scheduler trigger, even if you enable it again. See the scheduler panel in the Jobs sheet for status.',
+    'Daily scheduler enabled. Spoti Sync keeps exactly one scheduler trigger, even if you enable it again. See the Schedule sheet for status and upcoming jobs.',
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 }
@@ -138,14 +135,13 @@ function spotiSyncDisableScheduler() {
 function spotiSyncDisableSchedulerFromMenu() {
   'use strict';
   SpotiSync.Scheduler.disable();
-  SpreadsheetApp.getUi().alert('Spoti Sync', 'Scheduler disabled. The Jobs sheet scheduler panel has been updated.', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert('Spoti Sync', 'Scheduler disabled. The Schedule sheet has been updated.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function spotiSyncCheckForUpdatesStatus() {
   'use strict';
   var status = SpotiSync.UpdateChecker.check({ force: true });
-  SpotiSync.SheetStore.refreshDashboard();
-  SpotiSync.Scheduler.refreshPanel();
+  SpotiSync.SheetStore.refreshAllViews();
   return status;
 }
 

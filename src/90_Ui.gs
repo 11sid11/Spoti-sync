@@ -21,7 +21,8 @@ var SpotiSync = SpotiSync || {};
       '<h2>Spoti Sync Setup</h2><div class="muted">Runs in your Google account. No Spoti Sync server is involved.</div>' +
       '<div class="card"><div>Spotify: <span id="spotifyStatus" class="status">Checking…</span></div>' +
       '<div>Scheduler: <span id="schedulerStatus" class="status">Checking…</span></div>' +
-      '<div>Updates: <span id="updateStatus" class="status">Checking…</span></div></div>' +
+      '<div>Updates: <span id="updateStatus" class="status">Checking…</span></div>' +
+      '<div>Playlist heartbeat: <span class="status ok">Enabled for successful syncs</span></div></div>' +
       '<h3>1. Create a Spotify Developer app</h3>' +
       '<p class="muted">Open Spotify Developer Dashboard, create an app, and add this exact Redirect URI.</p>' +
       '<div id="redirectUri" class="code">' + ns.Core.escapeHtml(redirectUri) + '</div>' +
@@ -33,7 +34,7 @@ var SpotiSync = SpotiSync || {};
       '<button onclick="connectSpotify()">Save & Authorize Spotify</button>' +
       '<button class="secondary" onclick="refreshStatus()">Refresh status</button>' +
       '<h3>3. Scheduler</h3>' +
-      '<p class="muted">Spoti Sync uses one daily Google trigger. Individual jobs decide whether they are due.</p>' +
+      '<p class="muted">One daily Google trigger checks which jobs are eligible. See the Schedule sheet for the next eligible jobs and scheduler health.</p>' +
       '<button onclick="enableScheduler()">Enable daily scheduler</button>' +
       '<button class="secondary" onclick="disableScheduler()">Disable scheduler</button>' +
       '<h3>Maintenance</h3>' +
@@ -53,10 +54,10 @@ var SpotiSync = SpotiSync || {};
       'function copyRedirect(){navigator.clipboard.writeText(document.getElementById("redirectUri").textContent).then(function(){setMessage("Redirect URI copied.",false);},function(){setMessage("Copy failed. Select the URI manually.",true);});}' +
       'function connectSpotify(){var id=document.getElementById("clientId").value.trim();if(!id){setMessage("Paste your Spotify Client ID first.",true);return;}var authWindow=window.open("about:blank","_blank");' +
       'google.script.run.withSuccessHandler(function(url){setMessage("Authorization opened in a new tab. Return here after Spotify confirms the connection.",false);if(authWindow){authWindow.opener=null;authWindow.location.replace(url);}else{setMessage("Your browser blocked the Spotify authorization tab. Allow pop-ups for Google Sheets and try again.",true);}}).withFailureHandler(function(error){if(authWindow){authWindow.close();}serverFailure(error);}).spotiSyncStartAuthorization(id);}' +
-      'function enableScheduler(){google.script.run.withSuccessHandler(function(){setMessage("Daily scheduler enabled.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncEnableScheduler();}' +
+      'function enableScheduler(){google.script.run.withSuccessHandler(function(){setMessage("Daily scheduler enabled. Check the Schedule sheet for status.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncEnableScheduler();}' +
       'function disableScheduler(){google.script.run.withSuccessHandler(function(){setMessage("Scheduler disabled.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncDisableScheduler();}' +
       'function checkUpdates(){setMessage("Checking GitHub for updates…",false);google.script.run.withSuccessHandler(function(s){setMessage(s.updateAvailable?("Update "+s.latestVersion+" is available. Use Spoti Sync → Check for Updates to open the guided updater."):s.checkStatus,false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncCheckForUpdatesStatus();}' +
-      'function repairSheets(){google.script.run.withSuccessHandler(function(){setMessage("Sheets initialized.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncInitializeSheets();}' +
+      'function repairSheets(){google.script.run.withSuccessHandler(function(){setMessage("Dashboard, Jobs, Schedule, and Activity are ready.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncInitializeSheets();}' +
       'function disconnectSpotify(){if(!confirm("Disconnect Spotify from this Spoti Sync installation?")){return;}google.script.run.withSuccessHandler(function(){setMessage("Spotify disconnected. Your Client ID was kept for easy reconnection.",false);refreshStatus();}).withFailureHandler(serverFailure).spotiSyncDisconnect();}' +
       'refreshStatus();' +
       '</script></body></html>';
@@ -84,7 +85,7 @@ var SpotiSync = SpotiSync || {};
     if (status.updateAvailable) {
       title = 'Spoti Sync ' + status.latestVersion + ' is available';
       body = '<p>You are running <strong>' + ns.Core.escapeHtml(status.currentVersion) + '</strong>. ' +
-        'Updating replaces only the Apps Script code; your Sheet jobs and Spotify tokens stay in this installation.</p>' +
+        'Updating replaces only the Apps Script code; your Spotify Client ID, tokens, and job playlist IDs stay in this installation.</p>' +
         (notes ? '<ul>' + notes + '</ul>' : '') +
         '<p><strong>Update steps:</strong> open the update page, copy the latest bundle, replace <code>Code.gs</code>, save, reload the Sheet, then run Initialize / Repair Sheets once.</p>';
       actions = '<a class="button" href="' + ns.Core.escapeHtml(status.installerUrl) + '" target="_blank">Open update page</a>' +
@@ -113,17 +114,18 @@ var SpotiSync = SpotiSync || {};
   function summarizeRun(result, preview) {
     var lines = [];
     if (!result.jobs.length) {
-      return preview ? 'No enabled jobs found.' : 'No enabled jobs found.';
+      return 'No enabled jobs found.';
     }
 
     lines.push(preview ? 'Preview — no Spotify changes were made.' : 'Sync complete.');
     lines.push('');
     result.jobs.slice(0, 20).forEach(function (job) {
-      if (job.status === 'Error') {
+      if (job.status === 'Error' || job.status === 'Configuration error') {
         lines.push('✗ ' + job.job + ': ' + job.error);
       } else {
         lines.push('• ' + job.job + ': +' + job.added + ' / -' + job.removed +
-          (job.ignored ? ' (' + job.ignored + ' unsupported items ignored)' : ''));
+          (job.ignored ? ' (' + job.ignored + ' unsupported items ignored)' : '') +
+          (job.warning ? ' ⚠ ' + job.warning : ''));
       }
     });
     if (result.jobs.length > 20) {
@@ -131,7 +133,10 @@ var SpotiSync = SpotiSync || {};
     }
     if (result.errors && result.errors.length) {
       lines.push('');
-      lines.push('Some jobs failed. Check the History sheet for details.');
+      lines.push('Some jobs failed. Check the Activity sheet for details.');
+    } else if (result.warnings && result.warnings.length) {
+      lines.push('');
+      lines.push('Playlist sync completed with a description warning. Check Activity for details.');
     }
     return lines.join('\n');
   }
@@ -140,8 +145,7 @@ var SpotiSync = SpotiSync || {};
     showSetup: function () {
       ns.SheetStore.initialize();
       ns.UpdateChecker.check({ force: false });
-      ns.SheetStore.refreshDashboard();
-      ns.Scheduler.refreshPanel();
+      ns.SheetStore.refreshAllViews();
       var html = HtmlService.createHtmlOutput(setupHtml()).setTitle('Spoti Sync Setup');
       SpreadsheetApp.getUi().showSidebar(html);
     },
@@ -152,8 +156,7 @@ var SpotiSync = SpotiSync || {};
 
     showUpdateCheck: function () {
       var status = ns.UpdateChecker.check({ force: true });
-      ns.SheetStore.refreshDashboard();
-      ns.Scheduler.refreshPanel();
+      ns.SheetStore.refreshAllViews();
       var html = HtmlService.createHtmlOutput(updateHtml(status)).setWidth(520).setHeight(390);
       SpreadsheetApp.getUi().showModalDialog(html, 'Spoti Sync Updates');
     },
@@ -189,11 +192,11 @@ var SpotiSync = SpotiSync || {};
       if (response.getSelectedButton() !== ui.Button.OK) { return; }
       targetPlaylist = response.getResponseText();
 
-      response = ui.prompt('Strategy', 'Enter MIRROR or APPEND', ui.ButtonSet.OK_CANCEL);
+      response = ui.prompt('Behavior', 'Enter MIRROR for an exact mirror or APPEND for an append-only archive.', ui.ButtonSet.OK_CANCEL);
       if (response.getSelectedButton() !== ui.Button.OK) { return; }
       strategy = ns.Core.trim(response.getResponseText()).toUpperCase();
 
-      response = ui.prompt('Interval', 'Run every how many days? Enter a whole number such as 1 or 10.', ui.ButtonSet.OK_CANCEL);
+      response = ui.prompt('Frequency', 'Run every how many days? Enter a whole number such as 1 or 10.', ui.ButtonSet.OK_CANCEL);
       if (response.getSelectedButton() !== ui.Button.OK) { return; }
       intervalDays = Number(response.getResponseText());
 
@@ -225,8 +228,10 @@ var SpotiSync = SpotiSync || {};
         'Spoti Sync ' + ns.VERSION,
         'Self-deployed Spotify playlist automation.\n\n' +
         'Updates: ' + ns.UpdateChecker.statusLabel(updateStatus) + '\n\n' +
+        'Successful syncs keep the target playlist description fresh with a compact Spoti Sync heartbeat.\n\n' +
         'Your OAuth tokens and scheduler stay in your Google account. Liked Songs is read-only to Spoti Sync.\n\n' +
-        'Project: https://github.com/11sid11/Spoti-sync',
+        'Project: ' + ns.Constants.PROJECT_URL + '\n' +
+        'Source: https://github.com/11sid11/Spoti-sync',
         SpreadsheetApp.getUi().ButtonSet.OK
       );
     }

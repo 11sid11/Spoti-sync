@@ -23,7 +23,9 @@ jobs:
         run: node scripts/build.js
       - name: Run core tests
         run: node scripts/test.js
-      - name: Run scheduler visibility checks
+      - name: Run sheet and scheduler checks
         run: node scripts/test-scheduler.js
+      - name: Run playlist heartbeat tests
+        run: node scripts/test-heartbeat.js
       - name: Run update checker behavior tests
         run: node scripts/test-update-checker.js
