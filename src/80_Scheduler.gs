@@ -39,9 +39,12 @@ var SpotiSync = SpotiSync || {};
     }
   }
 
-  function refreshViewsBestEffort() {
+  function refreshSchedulerViewsBestEffort() {
     try {
-      ns.SheetStore.refreshAllViews();
+      // Trigger changes only affect scheduler-facing status. Avoid reformatting
+      // Jobs and Activity when the user enables/disables the scheduler.
+      ns.SheetStore.refreshSchedule();
+      ns.SheetStore.refreshDashboard();
     } catch (ignored) {
       // Keep scheduler and authorization actions functional during partial setup.
     }
@@ -77,13 +80,13 @@ var SpotiSync = SpotiSync || {};
         .everyDays(1)
         .atHour(ns.Constants.DEFAULT_SCHEDULER_HOUR)
         .create();
-      refreshViewsBestEffort();
+      refreshSchedulerViewsBestEffort();
       return true;
     },
 
     disable: function () {
       deleteSchedulerTriggers();
-      refreshViewsBestEffort();
+      refreshSchedulerViewsBestEffort();
       return true;
     },
 
@@ -92,17 +95,17 @@ var SpotiSync = SpotiSync || {};
         var result = ns.SyncEngine.runDue();
         recordSchedulerCheck(result.status || 'Success', null);
         checkForUpdatesBestEffort();
-        refreshViewsBestEffort();
+        refreshSchedulerViewsBestEffort();
         return result;
       } catch (error) {
         recordSchedulerCheck('Error', error);
         checkForUpdatesBestEffort();
-        refreshViewsBestEffort();
+        refreshSchedulerViewsBestEffort();
         throw error;
       }
     },
 
-    refreshViews: refreshViewsBestEffort,
+    refreshViews: refreshSchedulerViewsBestEffort,
     _scheduleLabel: scheduleLabel
   };
 })(SpotiSync);
