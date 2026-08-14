@@ -11,7 +11,7 @@ Spoti Sync exists for a simple reason: Spotify's **Liked Songs** collection is u
 - **No Spotify client secret.** Authentication uses Authorization Code with PKCE.
 - **No runtime dependencies.** The installed Apps Script is plain JavaScript using built-in Google services.
 - **Low quota footprint.** One daily Apps Script trigger decides which configured jobs are due.
-- **Open source and inspectable.** The human-readable source lives in `src/`; CI and GitHub Pages generate a single-file `SpotiSync.gs` installer from those modules.
+- **Open source and inspectable.** Human-readable source lives in `src/`; the GitHub Pages installer assembles the one-file `SpotiSync.gs` bundle directly from those committed modules in the user's browser.
 
 ## Included strategies
 
@@ -27,17 +27,17 @@ The default use cases are:
 
 ## Installation
 
-The guided installer is designed to be hosted on GitHub Pages. Until Pages is enabled for the repository, the same steps are available in [`docs/index.html`](docs/index.html).
+Use the guided GitHub Pages installer. The site is static and does not receive Spotify or Google credentials.
 
 At a high level:
 
 1. Create a blank Google Sheet.
 2. Open **Extensions → Apps Script**.
-3. Use the GitHub Pages installer to copy or download the generated `SpotiSync.gs` bundle, then replace `Code.gs` with it.
-4. Save, reload the Sheet, and open **Spoti Sync → Setup**.
-5. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, and paste your Client ID.
-6. Authorize Spotify.
-7. Add sync jobs, preview changes, then enable the daily scheduler.
+3. Use **Copy Apps Script** or **Download Apps Script** on the setup page. The bundle is assembled on demand from `src/*.gs`; there is no separately hosted generated file to go stale or disappear.
+4. Replace `Code.gs` with the generated bundle and save.
+5. Reload the Sheet and open **Spoti Sync → Setup**.
+6. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, and paste your Client ID.
+7. Authorize Spotify, add sync jobs, preview changes, then enable the daily scheduler.
 
 No web-app deployment, local server, Node.js installation, or `clasp` setup is required for end users.
 
@@ -51,14 +51,18 @@ See [`SECURITY.md`](SECURITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md) for de
 
 ## Development
 
-The source is split into Apps Script-friendly modules under `src/`. A dependency-free Node script concatenates them into the installable bundle:
+The source is split into Apps Script-friendly modules under `src/`. A dependency-free Node script can build the same combined file locally for validation:
 
 ```bash
 node scripts/build.js
 node scripts/test.js
 ```
 
-`node scripts/build.js --check` can verify locally generated artifacts without rewriting them. CI performs a fresh build before running tests.
+The generated local bundle lives under ignored `dist/`; production installation does not depend on committing or publishing generated code.
+
+## GitHub Pages
+
+The repository currently publishes GitHub Pages directly from the `main` branch. Root `index.html` routes users to the guided site under `docs/`. The site's copy/download controls build the Apps Script bundle client-side from the repository source, so Pages does not need a build workflow.
 
 ## Current platform constraints
 
