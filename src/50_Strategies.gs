@@ -26,6 +26,7 @@ var SpotiSync = SpotiSync || {};
     var targetByKey = indexTargetByKey(target);
     var repairKeys = Object.create(null);
     var removeUris = [];
+    var removeCount = 0;
 
     sourceTracks.forEach(function (track) {
       sourceKeys[track.keyUri] = true;
@@ -36,6 +37,7 @@ var SpotiSync = SpotiSync || {};
       if (!sourceKeys[key]) {
         targetTracks.forEach(function (track) {
           removeUris.push(track.writeUri);
+          removeCount += 1;
         });
         return;
       }
@@ -44,6 +46,7 @@ var SpotiSync = SpotiSync || {};
         repairKeys[key] = true;
         targetTracks.forEach(function (track) {
           removeUris.push(track.writeUri);
+          removeCount += 1;
         });
       }
     });
@@ -55,6 +58,7 @@ var SpotiSync = SpotiSync || {};
     return {
       add: addTracks,
       remove: ns.Core.uniqueStrings(removeUris),
+      removeCount: removeCount,
       addMode: source.ordering === ns.Constants.ORDERING.NEWEST_FIRST ? 'FRONT' : 'END',
       ignored: Number(source.ignoredCount || 0) + Number(target.ignoredCount || 0)
     };
@@ -74,6 +78,7 @@ var SpotiSync = SpotiSync || {};
     return {
       add: addTracks,
       remove: [],
+      removeCount: 0,
       addMode: 'END',
       ignored: Number(source.ignoredCount || 0) + Number(target.ignoredCount || 0)
     };
