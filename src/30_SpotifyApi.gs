@@ -149,6 +149,17 @@ var SpotiSync = SpotiSync || {};
           })
         }
       });
+    },
+
+    updatePlaylistDescription: function (playlistId, description) {
+      var id = encodeURIComponent(ns.Core.parsePlaylistId(playlistId));
+      var text = ns.Core.trim(description);
+      ns.Core.assert(text, 'Playlist description cannot be empty.');
+      return request('put', '/playlists/' + id, {
+        body: {
+          description: text
+        }
+      });
     }
   };
 })(SpotiSync);

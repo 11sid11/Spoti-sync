@@ -4,8 +4,6 @@ var SpotiSync = SpotiSync || {};
   'use strict';
 
   var HANDLER = 'spotiSyncScheduler';
-  var PANEL_START_COLUMN = 15; // O
-  var PANEL_ROWS = 12;
 
   function schedulerTriggers() {
     return ScriptApp.getProjectTriggers().filter(function (trigger) {
@@ -25,112 +23,6 @@ var SpotiSync = SpotiSync || {};
     return 'Daily · ' + start + '–' + end + ' · ' + timezone;
   }
 
-  function formatTimestamp(value, timezone) {
-    if (!value) {
-      return 'Never';
-    }
-
-    var date = value instanceof Date ? value : new Date(value);
-    if (isNaN(date.getTime())) {
-      return String(value);
-    }
-
-    return Utilities.formatDate(date, timezone, 'yyyy-MM-dd HH:mm:ss');
-  }
-
-  function dateKeyFromOrdinal(ordinal) {
-    return Utilities.formatDate(new Date(ordinal * 86400000), 'UTC', 'yyyy-MM-dd');
-  }
-
-  function nextDueLabel(readResult, now, timezone) {
-    if (readResult.errors.length) {
-      return 'Fix ' + readResult.errors.length + ' configuration error' +
-        (readResult.errors.length === 1 ? '' : 's');
-    }
-
-    if (!readResult.jobs.length) {
-      return 'No enabled jobs';
-    }
-
-    var dueNow = readResult.jobs.filter(function (job) {
-      return ns.SheetStore.isJobDue(job, now);
-    });
-
-    if (dueNow.length) {
-      return dueNow[0].name + (dueNow.length > 1 ? ' +' + (dueNow.length - 1) + ' more · due now' : ' · due now');
-    }
-
-    var next = readResult.jobs.map(function (job) {
-      var last = job.lastSuccess instanceof Date ? job.lastSuccess : new Date(job.lastSuccess);
-      var lastOrdinal = ns.Core.calendarDayOrdinal(last, timezone);
-      return {
-        name: job.name,
-        ordinal: lastOrdinal + job.intervalDays
-      };
-    }).sort(function (a, b) {
-      return a.ordinal - b.ordinal;
-    })[0];
-
-    return next.name + ' · ' + dateKeyFromOrdinal(next.ordinal);
-  }
-
-  function renderPanel() {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (!ss) {
-      return;
-    }
-
-    var sheet = ss.getSheetByName(ns.Constants.SHEETS.JOBS);
-    if (!sheet) {
-      return;
-    }
-
-    var timezone = ss.getSpreadsheetTimeZone();
-    var triggers = schedulerTriggers();
-    var status = ns.Storage.getDocumentStatus();
-    var readResult = ns.SheetStore.getJobReadResult();
-    var updateStatus = ns.UpdateChecker.getCachedStatus();
-    var values = [
-      ['Scheduler', triggers.length ? 'Enabled' : 'Disabled'],
-      ['Schedule', scheduleLabel(timezone)],
-      ['Runs on', 'Google Apps Script cloud'],
-      ['Trigger count', triggers.length],
-      ['Last scheduler check', formatTimestamp(status.SCHEDULER_LAST_CHECK_AT, timezone)],
-      ['Last check status', status.SCHEDULER_LAST_CHECK_STATUS || '—'],
-      ['Next due job', nextDueLabel(readResult, new Date(), timezone)],
-      ['Spoti Sync version', ns.VERSION],
-      ['Updates', ns.UpdateChecker.statusLabel(updateStatus)],
-      ['Last update check', formatTimestamp(updateStatus.checkedAt, timezone)],
-      ['Job telemetry', 'Columns H:M show attempt, success, status, added, removed, and errors'],
-      ['Control', 'Spoti Sync menu → Check for Updates / Enable / Disable / Sync Now']
-    ];
-
-    var range = sheet.getRange(1, PANEL_START_COLUMN, PANEL_ROWS, 2);
-    range.clearFormat();
-    range.setValues(values);
-    range.setBorder(true, true, true, true, true, true, '#dadce0', SpreadsheetApp.BorderStyle.SOLID);
-    sheet.getRange(1, PANEL_START_COLUMN, 1, 2)
-      .setBackground('#202124')
-      .setFontColor('#ffffff')
-      .setFontWeight('bold');
-    sheet.getRange(2, PANEL_START_COLUMN, PANEL_ROWS - 1, 1).setFontWeight('bold');
-    sheet.getRange(1, PANEL_START_COLUMN, PANEL_ROWS, 2).setWrap(true).setVerticalAlignment('middle');
-    sheet.setColumnWidth(PANEL_START_COLUMN, 155);
-    sheet.setColumnWidth(PANEL_START_COLUMN + 1, 330);
-
-    if (triggers.length) {
-      sheet.getRange(1, PANEL_START_COLUMN + 1).setFontColor('#137333');
-    } else {
-      sheet.getRange(1, PANEL_START_COLUMN + 1).setFontColor('#d93025');
-    }
-
-    if (updateStatus.updateAvailable) {
-      sheet.getRange(9, PANEL_START_COLUMN + 1).setFontColor('#b06000').setFontWeight('bold');
-    } else if (updateStatus.checkStatus === 'Up to date') {
-      sheet.getRange(9, PANEL_START_COLUMN + 1).setFontColor('#137333');
-    }
-  }
-
   function recordSchedulerCheck(status, error) {
     ns.Storage.setDocumentStatus({
       SCHEDULER_LAST_CHECK_AT: ns.Core.nowIso(),
@@ -143,7 +35,15 @@ var SpotiSync = SpotiSync || {};
     try {
       ns.UpdateChecker.check({ force: false });
     } catch (ignored) {
-      // Update checks must never break playlist synchronization.
+      // Release checks are advisory and must never break playlist synchronization.
+    }
+  }
+
+  function refreshViewsBestEffort() {
+    try {
+      ns.SheetStore.refreshAllViews();
+    } catch (ignored) {
+      // Keep scheduler and authorization actions functional during partial setup.
     }
   }
 
@@ -161,35 +61,29 @@ var SpotiSync = SpotiSync || {};
         enabled: triggers.length > 0,
         triggerCount: triggers.length,
         schedule: scheduleLabel(timezone),
+        timezone: timezone,
         lastCheckAt: documentStatus.SCHEDULER_LAST_CHECK_AT || '',
-        lastCheckStatus: documentStatus.SCHEDULER_LAST_CHECK_STATUS || ''
+        lastCheckStatus: documentStatus.SCHEDULER_LAST_CHECK_STATUS || '',
+        lastCheckError: documentStatus.SCHEDULER_LAST_CHECK_ERROR || ''
       };
     },
 
     enable: function () {
-      // Idempotent by design: remove every existing Spoti Sync scheduler trigger
-      // before creating exactly one replacement trigger.
+      // Idempotent: enabling always replaces every existing Spoti Sync trigger
+      // with exactly one daily trigger.
       deleteSchedulerTriggers();
       ScriptApp.newTrigger(HANDLER)
         .timeBased()
         .everyDays(1)
         .atHour(ns.Constants.DEFAULT_SCHEDULER_HOUR)
         .create();
-      ns.SheetStore.refreshDashboard();
-      renderPanel();
+      refreshViewsBestEffort();
       return true;
     },
 
     disable: function () {
       deleteSchedulerTriggers();
-      if (ns.SheetStore) {
-        try {
-          ns.SheetStore.refreshDashboard();
-          renderPanel();
-        } catch (ignored) {
-          // Dashboard/panel refresh is best effort while installation is incomplete.
-        }
-      }
+      refreshViewsBestEffort();
       return true;
     },
 
@@ -198,22 +92,17 @@ var SpotiSync = SpotiSync || {};
         var result = ns.SyncEngine.runDue();
         recordSchedulerCheck(result.status || 'Success', null);
         checkForUpdatesBestEffort();
-        ns.SheetStore.refreshDashboard();
-        renderPanel();
+        refreshViewsBestEffort();
         return result;
       } catch (error) {
         recordSchedulerCheck('Error', error);
         checkForUpdatesBestEffort();
-        try {
-          ns.SheetStore.refreshDashboard();
-          renderPanel();
-        } catch (ignored) {
-          // Preserve the original scheduler error.
-        }
+        refreshViewsBestEffort();
         throw error;
       }
     },
 
-    refreshPanel: renderPanel
+    refreshViews: refreshViewsBestEffort,
+    _scheduleLabel: scheduleLabel
   };
 })(SpotiSync);

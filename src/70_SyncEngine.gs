@@ -45,8 +45,10 @@ var SpotiSync = SpotiSync || {};
     var startedAt = Date.now();
     var planned = planJob(job, runtime);
     var plan = planned.plan;
+    var heartbeat = null;
     var summary = {
       job: job.name,
+      jobId: job.jobId,
       strategy: job.strategy,
       added: plan.add.length,
       removed: plan.removeCount === undefined ? plan.remove.length : plan.removeCount,
@@ -54,15 +56,32 @@ var SpotiSync = SpotiSync || {};
       sourceCount: planned.source.tracks.length,
       targetCount: planned.target.tracks.length,
       status: write ? 'Success' : 'Preview',
+      warning: '',
       durationMs: 0
     };
 
     if (write) {
       applyPlan(job, plan, runtime);
+      heartbeat = ns.PlaylistHeartbeat.update(job, new Date());
+      if (!heartbeat.ok) {
+        summary.status = 'Success with warning';
+        summary.warning = 'Playlist synced, but its Spotify description could not be updated: ' + heartbeat.error;
+      }
     }
 
     summary.durationMs = Date.now() - startedAt;
     return summary;
+  }
+
+  function activityDetails(summary) {
+    var parts = [];
+    if (summary.ignored) {
+      parts.push(summary.ignored + ' unsupported item' + (summary.ignored === 1 ? '' : 's') + ' ignored');
+    }
+    if (summary.warning) {
+      parts.push(summary.warning);
+    }
+    return parts.join(' · ');
   }
 
   function runInternal(options) {
@@ -81,13 +100,15 @@ var SpotiSync = SpotiSync || {};
       likedCount: 0,
       status: configurationErrors.length ? 'Partial failure' : 'Success',
       finishedAt: '',
-      errors: []
+      errors: [],
+      warnings: []
     };
 
     configurationErrors.forEach(function (configError) {
       result.errors.push(configError.name + ': ' + configError.error);
       result.jobs.push({
         job: configError.name,
+        jobId: configError.jobId || '',
         strategy: configError.strategy || '',
         added: 0,
         removed: 0,
@@ -99,16 +120,15 @@ var SpotiSync = SpotiSync || {};
 
       if (opts.write) {
         ns.SheetStore.updateConfigurationError(configError);
-        ns.SheetStore.appendHistory({
+        ns.SheetStore.appendActivity({
           timestamp: new Date(),
           job: configError.name,
-          strategy: configError.strategy || '',
+          jobId: configError.jobId || '',
+          status: 'Configuration error',
           added: 0,
           removed: 0,
-          ignored: 0,
-          status: 'Configuration error',
           durationMs: 0,
-          error: configError.error
+          details: configError.error
         });
       }
     });
@@ -123,19 +143,24 @@ var SpotiSync = SpotiSync || {};
         if (job.sourceType === ns.Constants.SOURCE_TYPES.LIKED_SONGS) {
           result.likedCount = Math.max(result.likedCount, summary.sourceCount);
         }
+        if (summary.warning) {
+          result.warnings.push(job.name + ': ' + summary.warning);
+          if (result.status === 'Success') {
+            result.status = 'Success with warnings';
+          }
+        }
 
         if (opts.write) {
           ns.SheetStore.updateJobSuccess(job, summary);
-          ns.SheetStore.appendHistory({
+          ns.SheetStore.appendActivity({
             timestamp: new Date(),
             job: job.name,
-            strategy: job.strategy,
+            jobId: job.jobId,
+            status: summary.status,
             added: summary.added,
             removed: summary.removed,
-            ignored: summary.ignored,
-            status: 'Success',
             durationMs: summary.durationMs,
-            error: ''
+            details: activityDetails(summary)
           });
         }
       } catch (error) {
@@ -144,6 +169,7 @@ var SpotiSync = SpotiSync || {};
         result.errors.push(job.name + ': ' + safeMessage);
         result.jobs.push({
           job: job.name,
+          jobId: job.jobId,
           strategy: job.strategy,
           added: 0,
           removed: 0,
@@ -155,16 +181,15 @@ var SpotiSync = SpotiSync || {};
 
         if (opts.write) {
           ns.SheetStore.updateJobError(job, error);
-          ns.SheetStore.appendHistory({
+          ns.SheetStore.appendActivity({
             timestamp: new Date(),
             job: job.name,
-            strategy: job.strategy,
+            jobId: job.jobId,
+            status: 'Error',
             added: 0,
             removed: 0,
-            ignored: 0,
-            status: 'Error',
             durationMs: Date.now() - startedAt,
-            error: safeMessage
+            details: safeMessage
           });
         }
       }
