@@ -193,6 +193,30 @@ var SpotiSync = SpotiSync || {};
     };
   }
 
+  function parseJobRows(rows, startingRowNumber) {
+    var result = { jobs: [], errors: [] };
+    var firstRow = Number(startingRowNumber || 2);
+
+    rows.forEach(function (row, index) {
+      var rowNumber = firstRow + index;
+      try {
+        var job = normalizeJob(row, rowNumber);
+        if (job) {
+          result.jobs.push(job);
+        }
+      } catch (error) {
+        result.errors.push({
+          rowNumber: rowNumber,
+          name: ns.Core.trim(row[1]) || ('Job row ' + rowNumber),
+          strategy: ns.Core.trim(row[5]).toUpperCase(),
+          error: ns.Core.safeErrorMessage(error)
+        });
+      }
+    });
+
+    return result;
+  }
+
   ns.SheetStore = {
     jobHeaders: JOB_HEADERS.slice(),
 
@@ -203,21 +227,20 @@ var SpotiSync = SpotiSync || {};
       ns.SheetStore.refreshDashboard();
     },
 
-    getJobs: function () {
+    getJobReadResult: function () {
       var sheet = ensureJobsSheet();
       var lastRow = sheet.getLastRow();
+      var result = { jobs: [], errors: [] };
       if (lastRow < 2) {
-        return [];
+        return result;
       }
+
       var rows = sheet.getRange(2, 1, lastRow - 1, JOB_HEADERS.length).getValues();
-      var jobs = [];
-      rows.forEach(function (row, index) {
-        var job = normalizeJob(row, index + 2);
-        if (job) {
-          jobs.push(job);
-        }
-      });
-      return jobs;
+      return parseJobRows(rows, 2);
+    },
+
+    getJobs: function () {
+      return ns.SheetStore.getJobReadResult().jobs;
     },
 
     addJob: function (job) {
@@ -281,6 +304,13 @@ var SpotiSync = SpotiSync || {};
       sheet.getRange(job.rowNumber, 13).setValue(ns.Core.safeErrorMessage(error));
     },
 
+    updateConfigurationError: function (configError) {
+      var sheet = ensureJobsSheet();
+      sheet.getRange(configError.rowNumber, 8).setValue(new Date());
+      sheet.getRange(configError.rowNumber, 10).setValue('Configuration error');
+      sheet.getRange(configError.rowNumber, 13).setValue(configError.error);
+    },
+
     appendHistory: function (entry) {
       var sheet = ensureHistorySheet();
       sheet.appendRow([
@@ -331,6 +361,9 @@ var SpotiSync = SpotiSync || {};
       sheet.getRange('A12').setValue('Use the Spoti Sync menu to configure Spotify, add jobs, preview changes, sync now, or enable the scheduler.');
       sheet.getRange('A12:B13').merge();
       sheet.getRange('A12').setWrap(true);
-    }
+    },
+
+    _normalizeJob: normalizeJob,
+    _parseJobRows: parseJobRows
   };
 })(SpotiSync);

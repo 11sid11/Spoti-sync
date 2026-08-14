@@ -69,7 +69,9 @@ var SpotiSync = SpotiSync || {};
     var opts = options || {};
     var now = new Date();
     var runtime = { sourceCache: Object.create(null) };
-    var jobs = ns.SheetStore.getJobs().filter(function (job) {
+    var readResult = ns.SheetStore.getJobReadResult();
+    var configurationErrors = readResult.errors;
+    var jobs = readResult.jobs.filter(function (job) {
       return job.enabled && (!opts.dueOnly || ns.SheetStore.isJobDue(job, now));
     });
     var result = {
@@ -77,10 +79,39 @@ var SpotiSync = SpotiSync || {};
       added: 0,
       removed: 0,
       likedCount: 0,
-      status: 'Success',
+      status: configurationErrors.length ? 'Partial failure' : 'Success',
       finishedAt: '',
       errors: []
     };
+
+    configurationErrors.forEach(function (configError) {
+      result.errors.push(configError.name + ': ' + configError.error);
+      result.jobs.push({
+        job: configError.name,
+        strategy: configError.strategy || '',
+        added: 0,
+        removed: 0,
+        ignored: 0,
+        status: 'Configuration error',
+        durationMs: 0,
+        error: configError.error
+      });
+
+      if (opts.write) {
+        ns.SheetStore.updateConfigurationError(configError);
+        ns.SheetStore.appendHistory({
+          timestamp: new Date(),
+          job: configError.name,
+          strategy: configError.strategy || '',
+          added: 0,
+          removed: 0,
+          ignored: 0,
+          status: 'Configuration error',
+          durationMs: 0,
+          error: configError.error
+        });
+      }
+    });
 
     jobs.forEach(function (job) {
       var startedAt = Date.now();
@@ -141,7 +172,7 @@ var SpotiSync = SpotiSync || {};
 
     result.finishedAt = ns.Core.nowIso();
     if (opts.write) {
-      if (!jobs.length) {
+      if (!jobs.length && !configurationErrors.length) {
         result.status = opts.dueOnly ? 'No jobs due' : 'No enabled jobs';
       }
       ns.SheetStore.setRunSummary(result);

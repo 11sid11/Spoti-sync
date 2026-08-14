@@ -35,8 +35,9 @@ function load(filename) {
 
 load('00_Core.gs');
 load('50_Strategies.gs');
+load('60_SheetStore.gs');
 
-const { Core, Strategies, Constants } = context.SpotiSync;
+const { Core, Strategies, Constants, SheetStore } = context.SpotiSync;
 
 function track(id) {
   return {
@@ -138,6 +139,20 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert.strictEqual(plan.addMode, 'END');
 })();
 
+(function testMalformedEnabledJobDoesNotBlockValidJobs() {
+  const rows = [
+    [true, 'Broken', 'LIKED_SONGS', '', 'not-a-playlist', 'MIRROR', 1, '', '', '', 0, 0, ''],
+    [true, 'Valid', 'LIKED_SONGS', '', '1234567890AB', 'APPEND', 10, '', '', '', 0, 0, ''],
+    [false, 'Disabled broken row', 'NOPE', '', '', 'NOPE', 'bad', '', '', '', 0, 0, '']
+  ];
+  const parsed = SheetStore._parseJobRows(rows, 2);
+  assert.strictEqual(parsed.jobs.length, 1);
+  assert.strictEqual(parsed.jobs[0].name, 'Valid');
+  assert.strictEqual(parsed.errors.length, 1);
+  assert.strictEqual(parsed.errors[0].rowNumber, 2);
+  assert.match(parsed.errors[0].error, /Invalid Spotify playlist/);
+})();
+
 (function testCalendarDayMath() {
   assert.strictEqual(Core.dateKeyToOrdinal('2026-08-14') - Core.dateKeyToOrdinal('2026-08-13'), 1);
   assert.strictEqual(
@@ -167,6 +182,7 @@ function snapshot(ids, ordering = Constants.ORDERING.PRESERVE, ignoredCount = 0)
   assert(!bundle.includes('client_secret'));
   assert(!bundle.includes('user-library-modify'));
   assert(bundle.includes('/usercallback'));
+  assert(bundle.includes('getJobReadResult'));
 })();
 
 console.log('All Spoti Sync tests passed.');
