@@ -82,7 +82,9 @@ var SpotiSync = SpotiSync || {};
     var behavior = SpreadsheetApp.newDataValidation()
       .requireValueInList(['Exact Mirror', 'Append Only'], true).setAllowInvalid(false).build();
 
-    sheet.setHiddenGridlines(true).setFrozenRows(1).setTabColor(COLORS.GREEN);
+    sheet.setHiddenGridlines(true);
+    sheet.setFrozenRows(1);
+    sheet.setTabColor(COLORS.GREEN);
     styleTableHeader(sheet.getRange(1, 1, 1, width));
     sheet.setRowHeight(1, 32);
     sheet.getRange(2, 1, rows, 1).setDataValidation(checkbox);
@@ -103,7 +105,9 @@ var SpotiSync = SpotiSync || {};
 
   function styleActivitySheet(sheet) {
     var width = ns.SheetStore.activityHeaders.length;
-    sheet.setHiddenGridlines(true).setFrozenRows(1).setTabColor('#4285f4');
+    sheet.setHiddenGridlines(true);
+    sheet.setFrozenRows(1);
+    sheet.setTabColor('#4285f4');
     styleTableHeader(sheet.getRange(1, 1, 1, width));
     sheet.setColumnWidth(1, 175); sheet.setColumnWidth(2, 200); sheet.setColumnWidth(3, 170);
     sheet.setColumnWidth(4, 75); sheet.setColumnWidth(5, 75); sheet.setColumnWidth(6, 95);
@@ -180,7 +184,9 @@ var SpotiSync = SpotiSync || {};
     var recent = recentActivity(5);
 
     sheet.getRange('A1:F50').breakApart();
-    sheet.clear().setHiddenGridlines(true).setTabColor(COLORS.GREEN);
+    sheet.clear();
+    sheet.setHiddenGridlines(true);
+    sheet.setTabColor(COLORS.GREEN);
     styleTitle(sheet, 'A1:F1', 'Spoti Sync');
     sheet.setRowHeight(1, 40);
     sheet.getRange('A3:B3').setValues([['System', 'Status']]); styleTableHeader(sheet.getRange('A3:B3'));
@@ -244,7 +250,9 @@ var SpotiSync = SpotiSync || {};
     var now = new Date();
 
     sheet.getRange('A1:F100').breakApart();
-    sheet.clear().setHiddenGridlines(true).setTabColor('#34a853');
+    sheet.clear();
+    sheet.setHiddenGridlines(true);
+    sheet.setTabColor('#34a853');
     styleTitle(sheet, 'A1:F1', 'Automation Schedule');
     sheet.setRowHeight(1, 40);
     sheet.getRange('A3:B3').setValues([['Scheduler', scheduler.enabled ? '● Enabled' : '○ Disabled']]);

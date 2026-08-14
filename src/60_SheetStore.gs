@@ -204,6 +204,29 @@ var SpotiSync = SpotiSync || {};
     ];
   }
 
+  function replaceSheetData(sheet, headers, rows) {
+    var values = [headers].concat(rows || []);
+    var maxRows = sheet.getMaxRows();
+    var maxColumns = sheet.getMaxColumns();
+
+    // Old layouts can leave strict validation rules behind even after content
+    // and formatting are cleared. Remove those rules before writing converted
+    // friendly values such as "Liked Songs" and "Exact Mirror".
+    sheet.getRange(1, 1, maxRows, maxColumns).clearDataValidations();
+
+    // Write the replacement dataset before clearing any old trailing cells. If
+    // this write fails, the legacy values have not been destructively cleared.
+    sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+
+    if (maxRows > values.length) {
+      sheet.getRange(values.length + 1, 1, maxRows - values.length, maxColumns).clearContent();
+    }
+    if (maxColumns > headers.length) {
+      sheet.getRange(1, headers.length + 1, values.length, maxColumns - headers.length).clearContent();
+    }
+    sheet.clearFormats();
+  }
+
   function ensureJobsSheet() {
     var ss = spreadsheet();
     var sheet = ss.getSheetByName(ns.Constants.SHEETS.JOBS) || ss.insertSheet(ns.Constants.SHEETS.JOBS);
@@ -214,19 +237,14 @@ var SpotiSync = SpotiSync || {};
     var migratedRows = [];
 
     if (isEmpty) {
-      sheet.clear();
-      sheet.getRange(1, 1, 1, JOB_HEADERS.length).setValues([JOB_HEADERS]);
+      replaceSheetData(sheet, JOB_HEADERS, []);
     } else if (headersMatch(header, LEGACY_JOB_HEADERS)) {
       if (lastRow > 1) {
         migratedRows = sheet.getRange(2, 1, lastRow - 1, LEGACY_JOB_HEADERS.length).getValues()
           .filter(function (row) { return !isBlankRow(row); })
           .map(legacyJobToStoredRow);
       }
-      sheet.clear();
-      sheet.getRange(1, 1, 1, JOB_HEADERS.length).setValues([JOB_HEADERS]);
-      if (migratedRows.length) {
-        sheet.getRange(2, 1, migratedRows.length, JOB_HEADERS.length).setValues(migratedRows);
-      }
+      replaceSheetData(sheet, JOB_HEADERS, migratedRows);
     } else if (!headersMatch(header, JOB_HEADERS)) {
       throw new Error('The Jobs sheet layout is not recognized. Spoti Sync left it unchanged to avoid losing configuration.');
     }
@@ -254,19 +272,14 @@ var SpotiSync = SpotiSync || {};
     width = Math.max(sheet.getLastColumn(), ACTIVITY_HEADERS.length, LEGACY_HISTORY_HEADERS.length);
     header = sheet.getRange(1, 1, 1, width).getValues()[0];
     if (lastRow === 0 || (lastRow === 1 && isBlankRow(header))) {
-      sheet.clear();
-      sheet.getRange(1, 1, 1, ACTIVITY_HEADERS.length).setValues([ACTIVITY_HEADERS]);
+      replaceSheetData(sheet, ACTIVITY_HEADERS, []);
     } else if (headersMatch(header, LEGACY_HISTORY_HEADERS)) {
       if (lastRow > 1) {
         migratedRows = sheet.getRange(2, 1, lastRow - 1, LEGACY_HISTORY_HEADERS.length).getValues()
           .filter(function (row) { return !isBlankRow(row); })
           .map(legacyActivityToRow);
       }
-      sheet.clear();
-      sheet.getRange(1, 1, 1, ACTIVITY_HEADERS.length).setValues([ACTIVITY_HEADERS]);
-      if (migratedRows.length) {
-        sheet.getRange(2, 1, migratedRows.length, ACTIVITY_HEADERS.length).setValues(migratedRows);
-      }
+      replaceSheetData(sheet, ACTIVITY_HEADERS, migratedRows);
     } else if (!headersMatch(header, ACTIVITY_HEADERS)) {
       throw new Error('The Activity sheet layout is not recognized. Spoti Sync left it unchanged.');
     }
