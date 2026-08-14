@@ -16,7 +16,7 @@ Changes should preserve the project's core constraints:
 
 Requirements for contributors:
 
-- Node.js 20+ for local build/test scripts only.
+- Node.js 22+ for local build/test scripts only.
 
 Run:
 
@@ -26,12 +26,12 @@ node scripts/test.js
 node scripts/build.js --check
 ```
 
-The generated files are:
+Local builds generate:
 
 - `dist/SpotiSync.gs`
 - `docs/downloads/SpotiSync.gs`
 
-Do not edit generated files manually.
+These files are intentionally ignored by Git. GitHub Pages generates its install bundle during deployment. Do not edit generated files manually.
 
 ## Source layout
 
