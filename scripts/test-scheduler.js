@@ -24,6 +24,20 @@ assert(sheetViews.includes("['Runs on', 'Google Apps Script cloud']"), 'Schedule
 assert(sheetViews.includes("['Trigger count', Number(scheduler.triggerCount || 0)]"), 'Schedule sheet must expose the actual trigger count.');
 assert(sheetViews.includes("['Spoti Sync version', ns.VERSION]"), 'Schedule sheet must expose installed version.');
 assert(sheetViews.includes("['Updates', update ? ns.UpdateChecker.statusLabel(update) : 'Not checked']"), 'Schedule sheet must expose update state.');
+assert(sheetStore.includes('clearDataValidations();'), 'Sheet migration must explicitly remove legacy validation rules before writing converted values.');
+assert(sheetStore.includes('function replaceSheetData(sheet, headers, rows)'), 'Sheet migration must use the safe replacement helper.');
+const replacementHelper = sheetStore.slice(
+  sheetStore.indexOf('function replaceSheetData(sheet, headers, rows)'),
+  sheetStore.indexOf('function ensureJobsSheet()')
+);
+assert(
+  replacementHelper.indexOf('.setValues(values);') < replacementHelper.indexOf('.clearContent();'),
+  'Migration must write the converted dataset before clearing trailing legacy cells.'
+);
+assert(
+  !/setFrozenRows\([^)]*\)\s*\.setTabColor/.test(sheetViews),
+  'Sheet styling must not chain after setFrozenRows(), which returns void in Apps Script.'
+);
 assert(scheduler.includes('SCHEDULER_LAST_CHECK_AT'), 'Scheduler must persist its last background check time.');
 assert(scheduler.includes('SCHEDULER_LAST_CHECK_STATUS'), 'Scheduler must persist its last background result.');
 assert(scheduler.includes('ns.UpdateChecker.check({ force: false });'), 'Daily scheduler must perform a rate-limited update check.');
