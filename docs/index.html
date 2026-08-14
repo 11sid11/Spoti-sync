@@ -13,6 +13,7 @@
       <a class="brand" href="#top">Spoti Sync</a>
       <nav aria-label="Primary navigation">
         <a href="#how">How it works</a>
+        <a href="#update">Update</a>
         <a href="#setup">Setup</a>
         <a href="#privacy">Privacy</a>
         <a href="https://github.com/11sid11/Spoti-sync">GitHub</a>
@@ -54,6 +55,30 @@
         </div>
         <p class="note">The GitHub Pages site never receives your Spotify token, Client ID, playlist contents, or Google authorization. Treat one Sheet/Apps Script installation as belonging to one primary Google + Spotify account; use a separate copy for another account.</p>
       </div>
+    </section>
+
+    <section id="update" class="section wrap">
+      <p class="eyebrow">UPDATE AN EXISTING INSTALLATION</p>
+      <h2>Keep the Sheet. Replace only the code.</h2>
+      <p class="section-intro">Spoti Sync 1.2+ checks GitHub for release metadata automatically. When an update is available, use this section to replace the Apps Script bundle in your existing installation. Your jobs, history, Spotify Client ID, OAuth tokens, and scheduler stay with the same Sheet/script project.</p>
+      <div class="two-col">
+        <div>
+          <div class="actions">
+            <button class="button primary" type="button" data-copy-bundle data-status-target="updateCopyStatus">Copy latest Apps Script</button>
+            <a class="button secondary" href="downloads/SpotiSync.gs" download data-status-target="updateCopyStatus">Download latest</a>
+          </div>
+          <p id="updateCopyStatus" class="status-text" aria-live="polite"></p>
+        </div>
+        <div class="code-card">
+          <ol>
+            <li>Open your existing Sheet → <strong>Extensions → Apps Script</strong>.</li>
+            <li>Replace all contents of <code>Code.gs</code> with the latest bundle and Save.</li>
+            <li>Reload the same Sheet.</li>
+            <li>Run <strong>Spoti Sync → Initialize / Repair Sheets</strong> once.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="note"><strong>Updates are intentionally not installed silently.</strong> The running script checks only a small version metadata file from GitHub. You explicitly replace the code, so a repository change cannot silently rewrite the Apps Script running in your Google account.</p>
     </section>
 
     <section id="setup" class="section wrap">
@@ -110,7 +135,7 @@
           <div class="step-check"><input id="step5" type="checkbox"><label for="step5">5</label></div>
           <div class="step-body">
             <h3>Create your Spotify Developer app</h3>
-            <p>The Setup sidebar shows your installation's unique Redirect URI. Create a Spotify app, add that exact Redirect URI, and copy its Client ID.</p>
+            <p>The Setup sidebar shows your installation's unique Redirect URI. Create a Spotify app, add that exact Redirect URI, select <strong>Web API</strong>, and copy its Client ID.</p>
             <a class="button secondary" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Open Spotify Developer Dashboard</a>
             <p class="small-note">Spotify Development Mode currently requires the app owner to have Spotify Premium. Each Spoti Sync installation uses its own app instead of sharing a central Client ID.</p>
           </div>
@@ -148,6 +173,7 @@
             <dt>MIRROR</dt><dd>Target Spotify tracks have the same membership as the source. Missing tracks are added; obsolete tracks are removed. Unsupported local files/episodes are left alone.</dd>
             <dt>APPEND</dt><dd>Only missing source tracks are appended. Nothing already in the target is removed. For Liked Songs, missing tracks append oldest-to-newest.</dd>
             <dt>One scheduler</dt><dd>A single daily trigger checks all jobs. A 10-day job does not create a second Google trigger; it simply runs when due.</dd>
+            <dt>Update checks</dt><dd>The same daily scheduler checks a small GitHub version metadata file at most once per day. It never silently replaces or executes code from GitHub.</dd>
           </dl>
         </div>
         <div class="code-card">
@@ -183,6 +209,7 @@ Interval Days: 1</code></pre>
         <details><summary>Scheduled sync stopped after months</summary><p>Spotify Developer Dashboard refresh tokens currently expire after six months. Reopen Setup and authorize Spotify again. Your jobs remain in the Sheet.</p></details>
         <details><summary>Can I share one Spoti Sync Sheet between multiple Spotify accounts?</summary><p>Do not use one installation as a multi-account service. Make a separate Sheet/Apps Script copy for each primary Google + Spotify account so each installation owns its own OAuth tokens and scheduler.</p></details>
         <details><summary>I changed the target manually</summary><p><code>MIRROR</code> restores managed Spotify-track membership to match the source on the next run. <code>APPEND</code> leaves manual target changes alone and only appends missing source tracks.</p></details>
+        <details><summary>Why doesn't Spoti Sync install updates by itself?</summary><p>Silent self-modification would require broader Google permissions or executing remote code automatically. Spoti Sync instead checks version metadata and asks you to explicitly replace the bundle in your own Apps Script project.</p></details>
       </div>
     </section>
   </main>
