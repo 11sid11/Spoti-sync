@@ -25,10 +25,10 @@ assert(sheetViews.includes("['Trigger count', Number(scheduler.triggerCount || 0
 assert(sheetViews.includes("['Spoti Sync version', ns.VERSION]"), 'Schedule sheet must expose installed version.');
 assert(sheetViews.includes("['Updates', update ? ns.UpdateChecker.statusLabel(update) : 'Not checked']"), 'Schedule sheet must expose update state.');
 assert(sheetStore.includes('clearDataValidations();'), 'Sheet migration must explicitly remove legacy validation rules before writing converted values.');
-assert(sheetStore.includes('function replaceSheetData(sheet, headers, rows)'), 'Sheet migration must use the safe replacement helper.');
+assert(sheetStore.includes('function replaceSheetData(sheet, headers, rows, legacyWidth)'), 'Sheet migration must use the bounded replacement helper.');
 const replacementHelper = sheetStore.slice(
-  sheetStore.indexOf('function replaceSheetData(sheet, headers, rows)'),
-  sheetStore.indexOf('function ensureJobsSheet()')
+  sheetStore.indexOf('function replaceSheetData('),
+  sheetStore.indexOf('function ensureJobsSheet(')
 );
 assert(
   replacementHelper.indexOf('.setValues(values);') < replacementHelper.indexOf('.clearContent();'),
