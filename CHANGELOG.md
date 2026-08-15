@@ -199,7 +199,7 @@ All notable changes to Spoti Sync are documented here.
 ### Added
 
 - Scheduler status panel in columns O:P of the Jobs sheet.
-- Visible scheduler trigger count, cloud runtime, daily execution window, last background check, last background check result, and next due job.
+- Visible scheduler trigger count, cloud runtime, daily execution window, last background check, last check result, and next due job.
 - Dedicated scheduler telemetry so background checks are distinguishable from manual syncs.
 
 ## 1.0.0 — 2026-08-14
