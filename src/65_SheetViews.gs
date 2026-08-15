@@ -53,17 +53,18 @@ var SpotiSync = SpotiSync || {};
     var width = ns.SheetStore.jobHeaders.length;
     var maxDataRows = Math.max(sheet.getMaxRows() - 1, 1);
     var validationRows = Math.min(maxDataRows, Math.max(sheet.getLastRow() + 49, 50));
-    var frequencyPresets = [
-      'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
-      'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
-    ];
+    var behaviorOptions = ns.SheetStore.behaviorOptions();
+    var frequencyPresets = ns.SheetStore.frequencyPresets();
+    var frequencyLimits = ns.SheetStore.frequencyLimits();
+    var frequencyHelp = 'Choose a common schedule, or type Every N days (' +
+      frequencyLimits.min + '–' + frequencyLimits.max + '), for example Every 21 days.';
     var checkbox = SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build();
     var behavior = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Exact Mirror', 'Append Only'], true).setAllowInvalid(false).build();
+      .requireValueInList(behaviorOptions, true).setAllowInvalid(false).build();
     var frequency = SpreadsheetApp.newDataValidation()
       .requireValueInList(frequencyPresets, true)
       .setAllowInvalid(true)
-      .setHelpText('Choose a common schedule, or type Every N days (1–3650), for example Every 21 days.')
+      .setHelpText(frequencyHelp)
       .build();
 
     sheet.setHiddenGridlines(true);
@@ -80,14 +81,13 @@ var SpotiSync = SpotiSync || {};
     sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);
     sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);
     sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);
-    sheet.getRange(1, columns.FREQUENCY)
-      .setNote('Choose a preset from the dropdown, or type Every N days (1–3650), for example Every 21 days.');
+    sheet.getRange(1, columns.FREQUENCY).setNote(frequencyHelp);
 
     sheet.getRange(2, columns.HEALTH, maxDataRows, 2).setBackground(COLORS.LIGHT);
     sheet.setColumnWidth(columns.ENABLED, 74);
     sheet.setColumnWidth(columns.NAME, 210);
-    sheet.setColumnWidth(columns.SOURCE, 135);
-    sheet.setColumnWidth(columns.TARGET, 145);
+    sheet.setColumnWidth(columns.SOURCE, 205);
+    sheet.setColumnWidth(columns.TARGET, 205);
     sheet.setColumnWidth(columns.BEHAVIOR, 135);
     sheet.setColumnWidth(columns.FREQUENCY, 125);
     sheet.setColumnWidth(columns.HEALTH, 150);
@@ -115,6 +115,9 @@ var SpotiSync = SpotiSync || {};
     var columns = ns.SheetStore._jobColumns;
     var lastRow = sheet.getLastRow();
     styleJobsSheet(sheet);
+    if (ns.JobEditor && ns.JobEditor.applyFriendlyPlaylistLinks) {
+      ns.JobEditor.applyFriendlyPlaylistLinks();
+    }
     if (lastRow < 2) { return; }
     var rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
     var values = [];
