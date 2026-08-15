@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "version": "1.3.3",
+  "version": "1.3.4",
   "channel": "stable",
   "released_at": "2026-08-15",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Stops normal sync runs from invoking destructive Jobs-sheet migration rewrites.",
-    "Treats checkbox-only FALSE rows as empty instead of phantom disabled jobs.",
-    "Keeps Initialize / Repair Sheets as the explicit migration entry point and bounds migration work to Spoti Sync data.",
-    "Preserves Jobs formatting by removing whole-sheet clearFormats behavior from migration."
+    "Adds a guided Frequency dropdown with sensible common schedules.",
+    "Keeps custom intervals available by allowing Every N days values from 1 to 3650.",
+    "Explains custom schedules directly in Frequency validation help and the column note.",
+    "Keeps legacy MIRROR / APPEND values out of the Frequency choices."
   ]
 }

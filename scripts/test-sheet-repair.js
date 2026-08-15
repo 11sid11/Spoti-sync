@@ -119,19 +119,51 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert.strictEqual(parsed.jobs[0].targetPlaylist, '1234567890AB');
 })();
 
-(function testFrequencyCanNeverInheritLegacyStrategyDropdown() {
+(function testFrequencyDropdownOffersPresetsWithoutBlockingCustomSchedules() {
+  const expectedPresets = [
+    'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
+    'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
+  ];
+
   assert(
     sheetViews.includes('sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();'),
-    'Jobs styling must clear all legacy validation through the Frequency column.'
+    'Jobs styling must clear all legacy validation through the Frequency column first.'
   );
   assert(
     sheetViews.includes('sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);'),
-    'Behavior validation must be applied only to the Behavior column.'
+    'Behavior validation must remain scoped to the Behavior column.'
   );
   assert(
-    !/getRange\(2,\s*columns\.FREQUENCY[^\n]*\)\.setDataValidation/.test(sheetViews),
-    'Frequency must remain free text so it cannot receive the MIRROR / APPEND dropdown.'
+    sheetViews.includes('sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);'),
+    'Frequency must receive its own guided validation.'
   );
+  assert(
+    sheetViews.includes('.requireValueInList(frequencyPresets, true)'),
+    'Frequency validation must expose a dropdown.'
+  );
+  assert(
+    sheetViews.includes('.setAllowInvalid(true)'),
+    'Frequency validation must allow valid custom Every N days values outside the preset list.'
+  );
+  assert(
+    sheetViews.includes("setHelpText('Choose a common schedule, or type Every N days (1–3650), for example Every 21 days.')"),
+    'Frequency validation must explain how to enter custom schedules.'
+  );
+  expectedPresets.forEach((preset) => {
+    assert(sheetViews.includes(`'${preset}'`), `Missing Frequency preset: ${preset}`);
+  });
+  assert(!sheetViews.includes("'MIRROR', 'APPEND'"), 'Legacy strategy values must not be offered as Frequency choices.');
+})();
+
+(function testCustomNonPresetFrequencyStillParses() {
+  const row = [
+    true, 'Custom cadence', 'Liked Songs', 'Open playlist ↗', 'Exact Mirror', 'Every 21 days',
+    '', '', 'job_custom', '', '1234567890AB', '', '', '', 0, 0, ''
+  ];
+  const parsed = SheetStore._parseJobRows([row], 2);
+  assert.strictEqual(parsed.errors.length, 0);
+  assert.strictEqual(parsed.jobs.length, 1);
+  assert.strictEqual(parsed.jobs[0].intervalDays, 21);
 })();
 
 (function testJobsMigrationIsExplicitBoundedAndNonDestructiveToFormatting() {
@@ -173,4 +205,4 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert(sheetStoreSource.includes('refreshRunViews();'));
 })();
 
-console.log('Sheet repair and scheduler performance checks passed.');
+console.log('Sheet repair, Frequency UX, and scheduler performance checks passed.');
