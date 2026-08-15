@@ -159,19 +159,16 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
 
 (function testFrequencyEditorInitializesPresetAndCustomSchedules() {
   const presets = SheetStore.frequencyPresets();
+  const daily = JobEditor._frequencyEditorState('Daily', 1, presets);
+  const tenDays = JobEditor._frequencyEditorState('Every 10 days', 10, presets);
+  const custom = JobEditor._frequencyEditorState('Every 21 days', 21, presets);
 
-  assert.deepStrictEqual(
-    JobEditor._frequencyEditorState('Daily', 1, presets),
-    { selection: 'Daily', customDays: 1 }
-  );
-  assert.deepStrictEqual(
-    JobEditor._frequencyEditorState('Every 10 days', 10, presets),
-    { selection: 'Every 10 days', customDays: 10 }
-  );
-  assert.deepStrictEqual(
-    JobEditor._frequencyEditorState('Every 21 days', 21, presets),
-    { selection: '__CUSTOM__', customDays: 21 }
-  );
+  assert.strictEqual(daily.selection, 'Daily');
+  assert.strictEqual(daily.customDays, 1);
+  assert.strictEqual(tenDays.selection, 'Every 10 days');
+  assert.strictEqual(tenDays.customDays, 10);
+  assert.strictEqual(custom.selection, '__CUSTOM__');
+  assert.strictEqual(custom.customDays, 21);
 })();
 
 (function testFrequencyEditorSubmitsCanonicalLabelsToServerParser() {
