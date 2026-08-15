@@ -6,9 +6,11 @@ var SpotiSync = SpotiSync || {};
   var CATALOG_CACHE_KEY = 'SPOTI_SYNC_PLAYLIST_CATALOG_V1';
   var CATALOG_TTL_SECONDS = 300;
   var NAME_PROPERTY_PREFIX = 'PLAYLIST_NAME_';
-  var FRIENDLY_SOURCE_PREFIX = 'Playlist · ';
-  var PLAYLIST_LINK_SUFFIX = ' ↗';
-  var CUSTOM_FREQUENCY_VALUE = '__CUSTOM__';
+  var AUTOMATION = Object.freeze({
+    OFF: 'OFF',
+    DAILY: 'DAILY',
+    INTERVAL: 'INTERVAL'
+  });
 
   function normalizePlaylist(playlist) {
     var owner = playlist && playlist.owner ? playlist.owner : {};
@@ -115,320 +117,22 @@ var SpotiSync = SpotiSync || {};
     return ns.Core.trim(ns.Storage.documentProperties().getProperty(namePropertyKey(playlistId)));
   }
 
-  function stripFriendlyLabel(value) {
+  function cleanStoredLabel(value) {
     var label = ns.Core.trim(value);
-    if (!label) { return ''; }
-    if (label.indexOf(FRIENDLY_SOURCE_PREFIX) === 0) {
-      label = label.slice(FRIENDLY_SOURCE_PREFIX.length);
+    if (label.indexOf('Playlist · ') === 0) {
+      label = label.slice('Playlist · '.length);
     }
-    if (label.slice(-PLAYLIST_LINK_SUFFIX.length) === PLAYLIST_LINK_SUFFIX) {
-      label = label.slice(0, -PLAYLIST_LINK_SUFFIX.length);
+    if (label.slice(-2) === ' ↗') {
+      label = label.slice(0, -2);
     }
-    if (label === 'Playlist' || label === 'Open playlist' || label === 'Spotify Playlist') {
+    if (label === 'Playlist' || label === 'Open playlist' || label === 'Spotify playlist') {
       return '';
     }
     return ns.Core.trim(label);
   }
 
-  function sourceDisplay(name) {
-    var title = ns.Core.trim(name);
-    return title ? FRIENDLY_SOURCE_PREFIX + title + PLAYLIST_LINK_SUFFIX : 'Playlist ↗';
-  }
-
-  function targetDisplay(name) {
-    var title = ns.Core.trim(name);
-    return title ? title + PLAYLIST_LINK_SUFFIX : 'Open playlist ↗';
-  }
-
-  function playlistUrl(playlistId) {
-    return 'https://open.spotify.com/playlist/' + encodeURIComponent(playlistId);
-  }
-
-  function resolveKnownName(playlistId, visibleValue) {
-    return rememberedName(playlistId) || stripFriendlyLabel(visibleValue);
-  }
-
-  function richText(text, url) {
-    var builder = SpreadsheetApp.newRichTextValue().setText(text || '');
-    if (url) { builder.setLinkUrl(url); }
-    return builder.build();
-  }
-
-  function presentationForRow(row, columns) {
-    var sourceId;
-    var targetId;
-    var sourceName;
-    var targetName;
-
-    // Source/Target are presentation fields. Never use their visible text to
-    // decide whether a row is configured; SheetStore owns that classification.
-    if (!ns.SheetStore.isConfiguredJobRow(row)) {
-      return { sourceText: '', sourceUrl: '', targetText: '', targetUrl: '' };
-    }
-
-    sourceId = ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]);
-    targetId = ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
-    sourceName = resolveKnownName(sourceId, row[columns.SOURCE - 1]);
-    targetName = resolveKnownName(targetId, row[columns.TARGET - 1]);
-
-    return {
-      sourceText: sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)
-        ? sourceDisplay(sourceName) : 'Liked Songs',
-      sourceUrl: sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)
-        ? playlistUrl(sourceId) : '',
-      targetText: targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)
-        ? targetDisplay(targetName) : ns.Core.trim(row[columns.TARGET - 1]),
-      targetUrl: targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)
-        ? playlistUrl(targetId) : ''
-    };
-  }
-
-  function applyFriendlyPlaylistLinks() {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var lastRow = sheet.getLastRow();
-    var maxDataRows = Math.max(sheet.getMaxRows() - 1, 1);
-    var rows;
-    var sourceValues = [];
-    var targetValues = [];
-
-    // Source is presentation-only. Playlist selection lives in the Add/Edit
-    // Job sidebar, while hidden playlist IDs remain authoritative.
-    sheet.getRange(2, columns.SOURCE, maxDataRows, 1).clearDataValidations();
-    sheet.getRange(1, columns.SOURCE).setNote(
-      'Use Spoti Sync → Add Job or Edit Selected Job to choose Liked Songs or a Spotify playlist.'
-    );
-
-    if (lastRow < 2) { return; }
-    rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
-    rows.forEach(function (row) {
-      var presentation = presentationForRow(row, columns);
-      sourceValues.push([richText(presentation.sourceText, presentation.sourceUrl)]);
-      targetValues.push([richText(presentation.targetText, presentation.targetUrl)]);
-    });
-
-    sheet.getRange(2, columns.SOURCE, sourceValues.length, 1).setRichTextValues(sourceValues);
-    sheet.getRange(2, columns.TARGET, targetValues.length, 1).setRichTextValues(targetValues);
-  }
-
-  function rememberConfiguredNames(catalog) {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var lastRow = sheet.getLastRow();
-    var rows;
-    var unresolved = Object.create(null);
-
-    if (lastRow < 2) {
-      applyFriendlyPlaylistLinks();
-      return;
-    }
-
-    rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
-    rows.forEach(function (row) {
-      [row[columns.SOURCE_PLAYLIST_ID - 1], row[columns.TARGET_PLAYLIST_ID - 1]].forEach(function (value) {
-        var id = ns.Core.trim(value);
-        var playlist;
-        if (!id || rememberedName(id)) { return; }
-        playlist = findPlaylistById(catalog, id);
-        if (playlist) {
-          rememberPlaylist(playlist);
-        } else {
-          unresolved[id] = true;
-        }
-      });
-    });
-
-    Object.keys(unresolved).forEach(function (id) {
-      try {
-        rememberPlaylist(getPlaylistDetails(id));
-      } catch (ignored) {
-        // Preserve the existing ID and label when Spotify cannot resolve it.
-      }
-    });
-    applyFriendlyPlaylistLinks();
-  }
-
-  function frequencyEditorState(frequency, intervalDays, presets) {
-    var options = presets || ns.SheetStore.frequencyPresets();
-    var label = ns.Core.trim(frequency);
-    return {
-      selection: options.indexOf(label) !== -1 ? label : CUSTOM_FREQUENCY_VALUE,
-      customDays: Number(intervalDays || 1)
-    };
-  }
-
-  function frequencyRequestLabel(selection, customDays) {
-    if (ns.Core.trim(selection) === CUSTOM_FREQUENCY_VALUE) {
-      return ns.SheetStore._frequencyLabel(Number(customDays));
-    }
-    return ns.Core.trim(selection);
-  }
-
-  function currentConfigForRow(rowNumber) {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var row = sheet.getRange(rowNumber, 1, 1, ns.SheetStore.jobHeaders.length).getValues()[0];
-    var sourceId = ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]);
-    var targetId = ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
-    var intervalDays;
-    var strategy;
-
-    ns.Core.assert(rowNumber >= 2 && ns.Core.trim(row[columns.NAME - 1]), 'Select a configured job row first.');
-    try { intervalDays = ns.SheetStore._parseFrequency(row[columns.FREQUENCY - 1]); } catch (ignored) { intervalDays = 1; }
-    try { strategy = ns.SheetStore._parseBehaviorLabel(row[columns.BEHAVIOR - 1]); } catch (ignored2) { strategy = ns.Constants.STRATEGIES.MIRROR; }
-
-    return {
-      rowNumber: rowNumber,
-      jobId: ns.Core.trim(row[columns.ID - 1]),
-      enabled: ns.SheetStore._normalizeBoolean(row[columns.ENABLED - 1]),
-      name: ns.Core.trim(row[columns.NAME - 1]),
-      sourceType: sourceId ? ns.Constants.SOURCE_TYPES.PLAYLIST : ns.Constants.SOURCE_TYPES.LIKED_SONGS,
-      sourcePlaylistId: sourceId,
-      sourceName: resolveKnownName(sourceId, row[columns.SOURCE - 1]),
-      targetPlaylistId: targetId,
-      targetName: resolveKnownName(targetId, row[columns.TARGET - 1]),
-      behavior: ns.SheetStore._behaviorLabel(strategy),
-      frequency: ns.SheetStore._frequencyLabel(intervalDays),
-      intervalDays: intervalDays
-    };
-  }
-
-  function selectedJobConfig() {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss && ss.getActiveSheet();
-    var range = sheet && sheet.getActiveRange();
-    ns.Core.assert(sheet && sheet.getName() === ns.Constants.SHEETS.JOBS,
-      'Open the Jobs sheet and select the job row you want to edit.');
-    ns.Core.assert(range && range.getRow() >= 2,
-      'Select a configured job row before choosing Edit Selected Job.');
-    return currentConfigForRow(range.getRow());
-  }
-
-  function defaultConfig() {
-    return {
-      rowNumber: 0,
-      jobId: '',
-      enabled: true,
-      name: '',
-      sourceType: ns.Constants.SOURCE_TYPES.LIKED_SONGS,
-      sourcePlaylistId: '',
-      sourceName: '',
-      targetPlaylistId: '',
-      targetName: '',
-      behavior: ns.SheetStore._behaviorLabel(ns.Constants.STRATEGIES.MIRROR),
-      frequency: ns.SheetStore._frequencyLabel(1),
-      intervalDays: 1
-    };
-  }
-
-  function jsonForHtml(value) {
-    return JSON.stringify(value)
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026');
-  }
-
-  function editorHtml(model) {
-    var data = jsonForHtml(model);
-    var behaviorOptions = model.behaviorOptions.map(function (item) {
-      return '<option value="' + ns.Core.escapeHtml(item) + '">' + ns.Core.escapeHtml(item) + '</option>';
-    }).join('');
-    var frequencyOptions = model.frequencyPresets.map(function (item) {
-      return '<option value="' + ns.Core.escapeHtml(item) + '">' + ns.Core.escapeHtml(item) + '</option>';
-    }).join('') + '<option value="' + CUSTOM_FREQUENCY_VALUE + '">Custom interval…</option>';
-
-    return '<!doctype html><html><head><base target="_blank"><style>' +
-      'body{font-family:Arial,sans-serif;color:#202124;margin:0;padding:16px;line-height:1.4}' +
-      'h2{margin:0 0 4px}.muted{font-size:12px;color:#5f6368}.section{margin-top:18px}' +
-      'label{display:block;font-size:12px;font-weight:600;margin:9px 0 4px}' +
-      'input,select{box-sizing:border-box;width:100%;padding:8px;border:1px solid #bdc1c6;border-radius:4px;background:#fff}' +
-      'select[size]{padding:2px}.row{display:flex;gap:8px}.row>*{flex:1}.hidden{display:none}' +
-      '.check{display:flex;align-items:center;gap:8px;margin-top:10px}.check input{width:auto}' +
-      '.frequency-custom{display:flex;align-items:center;gap:6px;margin-top:6px}.frequency-custom input{width:86px}' +
-      'button{border:0;border-radius:4px;padding:9px 12px;background:#202124;color:#fff;cursor:pointer}' +
-      'button.secondary{background:#f1f3f4;color:#202124}.actions{display:flex;gap:8px;margin-top:20px}' +
-      '#message{font-size:12px;margin-top:10px;white-space:pre-wrap}.ok{color:#137333}.bad{color:#b3261e}' +
-      '</style></head><body>' +
-      '<h2>' + (model.mode === 'edit' ? 'Edit Job' : 'Add Job') + '</h2>' +
-      '<div class="muted">Choose playlists by name. Spoti Sync keeps their Spotify IDs internally.</div>' +
-      '<div class="section"><label for="jobName">Job name</label><input id="jobName" maxlength="120">' +
-      '<label class="check"><input type="checkbox" id="enabled"> Enabled</label></div>' +
-      '<div class="section"><label for="sourceType">Source</label><select id="sourceType">' +
-      '<option value="LIKED_SONGS">Liked Songs</option><option value="PLAYLIST">Spotify playlist</option></select>' +
-      '<div id="sourcePlaylistSection" class="hidden"><label for="sourceSearch">Find source playlist</label>' +
-      '<input id="sourceSearch" placeholder="Search your playlists"><select id="sourcePlaylist" size="6"></select>' +
-      '<label for="sourceManual">Not listed? Paste Spotify playlist link or ID</label><input id="sourceManual" placeholder="https://open.spotify.com/playlist/…"></div></div>' +
-      '<div class="section"><label for="targetMode">Target</label><select id="targetMode">' +
-      '<option value="existing">Existing Spotify playlist</option><option value="create">Create new playlist</option></select>' +
-      '<div id="targetExisting"><label for="targetSearch">Find target playlist</label>' +
-      '<input id="targetSearch" placeholder="Search your playlists"><select id="targetPlaylist" size="6"></select>' +
-      '<label for="targetManual">Not listed? Paste Spotify playlist link or ID</label><input id="targetManual" placeholder="https://open.spotify.com/playlist/…"></div>' +
-      '<div id="targetCreate" class="hidden"><label for="newTargetName">New playlist name</label><input id="newTargetName" maxlength="120">' +
-      '<label class="check"><input type="checkbox" id="targetPublic"> Public playlist</label></div></div>' +
-      '<div class="section row"><div><label for="behavior">Behavior</label><select id="behavior">' + behaviorOptions + '</select></div>' +
-      '<div><label for="frequencyPreset">Frequency</label><select id="frequencyPreset">' + frequencyOptions + '</select>' +
-      '<div id="customFrequencySection" class="hidden"><div class="frequency-custom"><span>Every</span>' +
-      '<input id="customFrequencyDays" type="number" min="' + model.frequencyLimits.min + '" max="' + model.frequencyLimits.max + '" step="1">' +
-      '<span>days</span></div></div></div></div>' +
-      '<div class="actions"><button id="saveButton" onclick="saveJob()">Save Job</button>' +
-      '<button class="secondary" onclick="refreshCatalog()">Refresh playlists</button></div><div id="message"></div>' +
-      '<script>var MODEL=' + data + ';var catalog=MODEL.catalog||[];var sourceSelected=MODEL.config.sourcePlaylistId||"";var targetSelected=MODEL.config.targetPlaylistId||"";var CUSTOM_FREQUENCY="' + CUSTOM_FREQUENCY_VALUE + '";' +
-      'function el(id){return document.getElementById(id);}function msg(text,bad){var m=el("message");m.textContent=text||"";m.className=bad?"bad":"ok";}' +
-      'function label(p){var bits=[p.name];if(p.itemCount){bits.push(p.itemCount+" tracks");}if(p.owner){bits.push(p.owner);}return bits.join(" · ");}' +
-      'function render(which){var search=el(which+"Search").value.toLowerCase();var select=el(which+"Playlist");var selected=which==="source"?sourceSelected:targetSelected;select.innerHTML="";' +
-      'var shown=catalog.filter(function(p){return !search||p.name.toLowerCase().indexOf(search)!==-1||p.owner.toLowerCase().indexOf(search)!==-1;});' +
-      'if(selected&&!shown.some(function(p){return p.id===selected;})){var current=catalog.find(function(p){return p.id===selected;});if(current){shown.unshift(current);}}' +
-      'shown.forEach(function(p){var o=document.createElement("option");o.value=p.id;o.textContent=label(p);if(p.id===selected){o.selected=true;}select.appendChild(o);});}' +
-      'function toggle(){var playlist=el("sourceType").value==="PLAYLIST";el("sourcePlaylistSection").className=playlist?"":"hidden";var create=el("targetMode").value==="create";el("targetExisting").className=create?"hidden":"";el("targetCreate").className=create?"":"hidden";}' +
-      'function toggleFrequency(){el("customFrequencySection").className=el("frequencyPreset").value===CUSTOM_FREQUENCY?"":"hidden";}' +
-      'function init(){var c=MODEL.config;el("jobName").value=c.name||"";el("enabled").checked=c.enabled!==false;el("sourceType").value=c.sourceType||"LIKED_SONGS";el("behavior").value=c.behavior;el("frequencyPreset").value=c.frequencySelection;el("customFrequencyDays").value=c.customFrequencyDays;render("source");render("target");toggle();toggleFrequency();}' +
-      'el("sourceSearch").addEventListener("input",function(){render("source");});el("targetSearch").addEventListener("input",function(){render("target");});' +
-      'el("sourcePlaylist").addEventListener("change",function(){sourceSelected=this.value;});el("targetPlaylist").addEventListener("change",function(){targetSelected=this.value;});el("sourceType").addEventListener("change",toggle);el("targetMode").addEventListener("change",toggle);el("frequencyPreset").addEventListener("change",toggleFrequency);' +
-      'function saveJob(){var button=el("saveButton");button.disabled=true;msg("Saving…",false);var payload={mode:MODEL.mode,jobId:MODEL.config.jobId||"",name:el("jobName").value,enabled:el("enabled").checked,sourceType:el("sourceType").value,sourcePlaylistId:sourceSelected,sourceManual:el("sourceManual").value,targetMode:el("targetMode").value,targetPlaylistId:targetSelected,targetManual:el("targetManual").value,newTargetName:el("newTargetName").value,targetPublic:el("targetPublic").checked,behavior:el("behavior").value,frequencySelection:el("frequencyPreset").value,customFrequencyDays:el("customFrequencyDays").value};' +
-      'google.script.run.withSuccessHandler(function(r){msg((r&&r.message)||"Job saved.",false);setTimeout(function(){google.script.host.close();},500);}).withFailureHandler(function(e){button.disabled=false;msg(e&&e.message?e.message:String(e),true);}).spotiSyncSaveJobEditor(payload);}' +
-      'function refreshCatalog(){msg("Refreshing playlists…",false);google.script.run.withSuccessHandler(function(list){catalog=list||[];render("source");render("target");msg("Playlist list refreshed.",false);}).withFailureHandler(function(e){msg(e&&e.message?e.message:String(e),true);}).spotiSyncRefreshJobEditorCatalog();}' +
-      'init();</script></body></html>';
-  }
-
-  function openEditor(mode) {
-    ns.Core.assert(ns.Auth.isConnected(), 'Connect Spotify from Spoti Sync → Setup before configuring jobs.');
-    ns.SheetStore._ensureJobsSheet();
-    var catalog = getCatalog(false);
-    rememberConfiguredNames(catalog);
-    var config = mode === 'edit' ? selectedJobConfig() : defaultConfig();
-    var frequencyPresets = ns.SheetStore.frequencyPresets();
-    var frequencyState = frequencyEditorState(config.frequency, config.intervalDays, frequencyPresets);
-    var editorCatalog = catalog.slice();
-
-    config.frequencySelection = frequencyState.selection;
-    config.customFrequencyDays = frequencyState.customDays;
-
-    [
-      { id: config.sourcePlaylistId, name: config.sourceName },
-      { id: config.targetPlaylistId, name: config.targetName }
-    ].forEach(function (current) {
-      if (current.id && !findPlaylistById(editorCatalog, current.id)) {
-        editorCatalog.unshift({
-          id: current.id,
-          name: current.name || 'Current playlist',
-          url: playlistUrl(current.id),
-          owner: 'Current configuration',
-          isPublic: false,
-          collaborative: false,
-          itemCount: 0
-        });
-      }
-    });
-
-    var html = HtmlService.createHtmlOutput(editorHtml({
-      mode: mode,
-      config: config,
-      catalog: editorCatalog,
-      behaviorOptions: ns.SheetStore.behaviorOptions(),
-      frequencyPresets: frequencyPresets,
-      frequencyLimits: ns.SheetStore.frequencyLimits()
-    })).setTitle(mode === 'edit' ? 'Edit Spoti Sync Job' : 'Add Spoti Sync Job');
-    SpreadsheetApp.getUi().showSidebar(html);
+  function rememberCatalog(catalog) {
+    (catalog || []).forEach(rememberPlaylist);
   }
 
   function resolvePlaylistReference(selectedId, manualValue, catalog) {
@@ -437,79 +141,210 @@ var SpotiSync = SpotiSync || {};
     return findPlaylistById(catalog, id) || getPlaylistDetails(id);
   }
 
-  function findRowByJobId(jobId) {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var lastRow = sheet.getLastRow();
-    var values;
-    var index;
-    if (!jobId || lastRow < 2) { return 0; }
-    values = sheet.getRange(2, columns.ID, lastRow - 1, 1).getValues();
-    for (index = 0; index < values.length; index += 1) {
-      if (ns.Core.trim(values[index][0]) === jobId) { return index + 2; }
+  function automationForJob(job) {
+    if (!job.enabled) {
+      return AUTOMATION.OFF;
     }
-    return 0;
+    return job.intervalDays === 1 ? AUTOMATION.DAILY : AUTOMATION.INTERVAL;
   }
 
-  function writeConfiguration(payload, sourcePlaylist, targetPlaylist, strategy, intervalDays) {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var rowNumber = payload.mode === 'edit' ? findRowByJobId(ns.Core.trim(payload.jobId)) : 0;
-    var jobId = ns.Core.trim(payload.jobId) || ns.SheetStore.createJobId();
-    var sourceId = sourcePlaylist ? sourcePlaylist.id : '';
-    var sourceText = sourcePlaylist ? sourceDisplay(sourcePlaylist.name) : 'Liked Songs';
-    var targetText = targetDisplay(targetPlaylist.name);
-    var visible = [
-      payload.enabled === true,
-      ns.Core.trim(payload.name) || 'Spotify Sync',
-      sourceText,
-      targetText,
-      ns.SheetStore._behaviorLabel(strategy),
-      ns.SheetStore._frequencyLabel(intervalDays)
-    ];
+  function automationLabel(job) {
+    return ns.SheetStore.getAutomationLabel(job);
+  }
 
-    if (payload.mode === 'edit') {
-      ns.Core.assert(rowNumber, 'This job moved or was removed. Reopen Edit Selected Job and try again.');
-      sheet.getRange(rowNumber, 1, 1, visible.length).setValues([visible]);
-      sheet.getRange(rowNumber, columns.SOURCE_PLAYLIST_ID, 1, 2).setValues([[sourceId, targetPlaylist.id]]);
-      if (!ns.Core.trim(sheet.getRange(rowNumber, columns.ID).getValue())) {
-        sheet.getRange(rowNumber, columns.ID).setValue(jobId);
-      }
-    } else {
-      rowNumber = Math.max(sheet.getLastRow() + 1, 2);
-      var row = new Array(ns.SheetStore.jobHeaders.length).fill('');
-      visible.forEach(function (value, index) { row[index] = value; });
-      row[columns.ID - 1] = jobId;
-      row[columns.SOURCE_PLAYLIST_ID - 1] = sourceId;
-      row[columns.TARGET_PLAYLIST_ID - 1] = targetPlaylist.id;
-      row[columns.LAST_ADDED - 1] = 0;
-      row[columns.LAST_REMOVED - 1] = 0;
-      sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+  function sourceName(job) {
+    if (job.sourceType === ns.Constants.SOURCE_TYPES.LIKED_SONGS) {
+      return 'Liked Songs';
+    }
+    return rememberedName(job.sourcePlaylist) || cleanStoredLabel(job.sourceLabel) || 'Spotify playlist';
+  }
+
+  function targetName(job) {
+    return rememberedName(job.targetPlaylist) || cleanStoredLabel(job.targetLabel) || 'Spotify playlist';
+  }
+
+  function jobCard(job) {
+    return {
+      jobId: job.jobId,
+      name: job.name,
+      source: sourceName(job),
+      target: targetName(job),
+      behavior: ns.SheetStore._behaviorLabel(job.strategy),
+      automation: automationLabel(job),
+      automated: job.enabled,
+      intervalDays: job.intervalDays,
+      heartbeatEnabled: job.heartbeatEnabled !== false,
+      lastSuccess: job.lastSuccess ? ns.SheetStore._formatTimestamp(job.lastSuccess) : 'Never',
+      lastStatus: job.lastStatus || '',
+      status: ns.SheetStore._healthLabel(job),
+      lastAdded: job.lastAdded,
+      lastRemoved: job.lastRemoved,
+      lastError: job.lastError || ''
+    };
+  }
+
+  function homeModel() {
+    var read = ns.SheetStore.getJobReadResult();
+    var scheduler = ns.Scheduler.getStatus();
+    var update = ns.UpdateChecker.getCachedStatus();
+    var clientId = ns.Storage.getClientId();
+    var automatedJobs = read.jobs.filter(function (job) { return job.enabled; }).length;
+    return {
+      version: ns.VERSION,
+      connected: ns.Auth.isConnected(),
+      redirectUri: ns.Auth.getRedirectUri(),
+      spotifyDashboardUrl: ns.Constants.SPOTIFY_DASHBOARD_URL,
+      projectUrl: ns.Constants.PROJECT_URL,
+      clientIdHint: clientId ? ('Configured: …' + clientId.slice(-6)) : '',
+      automation: {
+        enabled: scheduler.enabled,
+        triggerCount: scheduler.triggerCount,
+        automatedJobs: automatedJobs,
+        lastCheckAt: scheduler.lastCheckAt || '',
+        lastCheckStatus: scheduler.lastCheckStatus || ''
+      },
+      update: {
+        available: Boolean(update.updateAvailable),
+        label: ns.UpdateChecker.statusLabel(update),
+        latestVersion: update.latestVersion || ''
+      },
+      jobs: read.jobs.map(jobCard),
+      configurationErrors: read.errors.map(function (error) {
+        return {
+          jobId: error.jobId || '',
+          name: error.name,
+          enabled: error.enabled,
+          error: error.error
+        };
+      })
+    };
+  }
+
+  function ensureCurrentPlaylist(catalog, id, name) {
+    if (!id || findPlaylistById(catalog, id)) { return; }
+    catalog.unshift({
+      id: id,
+      name: name || 'Current playlist',
+      url: 'https://open.spotify.com/playlist/' + encodeURIComponent(id),
+      owner: 'Current configuration',
+      isPublic: false,
+      collaborative: false,
+      itemCount: 0
+    });
+  }
+
+  function editorConfig(job) {
+    if (!job) {
+      return {
+        jobId: '',
+        name: '',
+        sourceType: ns.Constants.SOURCE_TYPES.LIKED_SONGS,
+        sourcePlaylistId: '',
+        sourceName: '',
+        targetPlaylistId: '',
+        targetName: '',
+        behavior: ns.SheetStore._behaviorLabel(ns.Constants.STRATEGIES.MIRROR),
+        automation: AUTOMATION.DAILY,
+        intervalDays: 1,
+        heartbeatEnabled: true
+      };
     }
 
-    if (sourcePlaylist) { rememberPlaylist(sourcePlaylist); }
-    rememberPlaylist(targetPlaylist);
-    return { rowNumber: rowNumber, jobId: jobId };
+    return {
+      jobId: job.jobId,
+      name: job.name,
+      sourceType: job.sourceType,
+      sourcePlaylistId: job.sourcePlaylist,
+      sourceName: sourceName(job),
+      targetPlaylistId: job.targetPlaylist,
+      targetName: targetName(job),
+      behavior: ns.SheetStore._behaviorLabel(job.strategy),
+      automation: automationForJob(job),
+      intervalDays: job.intervalDays,
+      heartbeatEnabled: job.heartbeatEnabled !== false
+    };
+  }
+
+  function editorModel(jobId) {
+    ns.Core.assert(ns.Auth.isConnected(), 'Connect Spotify before configuring jobs.');
+    var catalog = [];
+    var catalogWarning = '';
+    try {
+      catalog = getCatalog(false);
+    } catch (error) {
+      catalogWarning = 'Playlist list could not be loaded. You can still paste a Spotify playlist link or ID.';
+    }
+    var job = ns.Core.trim(jobId) ? ns.SheetStore.getJobById(jobId) : null;
+    var config = editorConfig(job);
+    var editorCatalog = catalog.slice();
+
+    rememberCatalog(catalog);
+    ensureCurrentPlaylist(editorCatalog, config.sourcePlaylistId, config.sourceName);
+    ensureCurrentPlaylist(editorCatalog, config.targetPlaylistId, config.targetName);
+
+    return {
+      mode: job ? 'edit' : 'add',
+      config: config,
+      catalog: editorCatalog,
+      catalogWarning: catalogWarning,
+      behaviorOptions: ns.SheetStore.behaviorOptions(),
+      frequencyLimits: ns.SheetStore.frequencyLimits(),
+      automationOptions: [
+        { value: AUTOMATION.OFF, label: 'Off' },
+        { value: AUTOMATION.DAILY, label: 'Daily' },
+        { value: AUTOMATION.INTERVAL, label: 'Every N days' }
+      ]
+    };
+  }
+
+  function intervalForPayload(data) {
+    var mode = ns.Core.trim(data.automation).toUpperCase();
+    var requested;
+
+    if (mode === AUTOMATION.OFF) {
+      requested = Number(data.intervalDays || 1);
+      if (!Number.isInteger(requested) || requested < 1) {
+        requested = 1;
+      }
+      return ns.SheetStore._parseFrequency(ns.SheetStore._frequencyLabel(requested));
+    }
+    if (mode === AUTOMATION.DAILY) {
+      return 1;
+    }
+    if (mode === AUTOMATION.INTERVAL) {
+      return ns.SheetStore._parseFrequency(ns.SheetStore._frequencyLabel(Number(data.intervalDays)));
+    }
+    throw new Error('Choose Off, Daily, or Every N days for Automation.');
   }
 
   function save(payload) {
     var data = payload || {};
     var sourceType = ns.Core.trim(data.sourceType).toUpperCase();
+    var automation = ns.Core.trim(data.automation).toUpperCase();
     var catalog;
     var sourcePlaylist = null;
     var targetPlaylist;
     var strategy;
     var intervalDays;
-    var requestedFrequency;
-    var written;
+    var enabled;
+    var sourceLabel;
+    var targetLabel;
+    var name;
+    var saved;
+    var schedulerWarning = '';
 
-    ns.Core.assert(data.mode === 'add' || data.mode === 'edit', 'Invalid job editor mode.');
-    ns.Core.assert([ns.Constants.SOURCE_TYPES.LIKED_SONGS, ns.Constants.SOURCE_TYPES.PLAYLIST].indexOf(sourceType) !== -1,
-      'Choose Liked Songs or a Spotify playlist as the source.');
+    ns.Core.assert(
+      [ns.Constants.SOURCE_TYPES.LIKED_SONGS, ns.Constants.SOURCE_TYPES.PLAYLIST].indexOf(sourceType) !== -1,
+      'Choose Liked Songs or a Spotify playlist as the source.'
+    );
     strategy = ns.SheetStore._parseBehaviorLabel(data.behavior);
-    requestedFrequency = frequencyRequestLabel(data.frequencySelection, data.customFrequencyDays);
-    intervalDays = ns.SheetStore._parseFrequency(requestedFrequency);
-    catalog = getCatalog(false);
+    intervalDays = intervalForPayload(data);
+    enabled = automation !== AUTOMATION.OFF;
+    try {
+      catalog = getCatalog(false);
+    } catch (ignored) {
+      catalog = [];
+    }
 
     if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
       sourcePlaylist = resolvePlaylistReference(data.sourcePlaylistId, data.sourceManual, catalog);
@@ -527,45 +362,110 @@ var SpotiSync = SpotiSync || {};
       throw new Error('Source and target must be different playlists.');
     }
 
-    written = writeConfiguration(data, sourcePlaylist, targetPlaylist, strategy, intervalDays);
-    if (ns.SheetViews) {
-      ns.SheetViews.refreshJobsStatus();
-      ns.SheetViews.refreshSchedule();
-      ns.SheetViews.refreshDashboard();
+    if (sourcePlaylist) { rememberPlaylist(sourcePlaylist); }
+    rememberPlaylist(targetPlaylist);
+
+    sourceLabel = sourcePlaylist ? sourcePlaylist.name : 'Liked Songs';
+    targetLabel = targetPlaylist.name;
+    name = ns.Core.trim(data.name) || (sourceLabel + ' → ' + targetLabel);
+
+    saved = ns.SheetStore.upsertJob({
+      jobId: ns.Core.trim(data.jobId),
+      name: name,
+      enabled: enabled,
+      sourceType: sourceType,
+      sourcePlaylistId: sourcePlaylist ? sourcePlaylist.id : '',
+      sourceLabel: sourceLabel,
+      targetPlaylistId: targetPlaylist.id,
+      targetLabel: targetLabel,
+      strategy: strategy,
+      intervalDays: intervalDays,
+      heartbeatEnabled: data.heartbeatEnabled !== false
+    });
+
+    try {
+      ns.Scheduler.reconcile({ refresh: false });
+    } catch (error) {
+      schedulerWarning = 'Job saved. Automation needs attention: ' + ns.Core.safeErrorMessage(error);
+    }
+
+    ns.SheetStore.refreshSummary();
+    return {
+      ok: true,
+      jobId: saved.jobId,
+      warning: schedulerWarning,
+      message: schedulerWarning || 'Job saved.',
+      home: homeModel()
+    };
+  }
+
+  function deleteJob(jobId) {
+    ns.SheetStore.deleteJob(jobId);
+    var schedulerWarning = '';
+    try {
+      ns.Scheduler.reconcile({ refresh: false });
+    } catch (error) {
+      schedulerWarning = 'Job deleted. Automation needs attention: ' + ns.Core.safeErrorMessage(error);
+    }
+    ns.SheetStore.refreshSummary();
+    return {
+      ok: true,
+      warning: schedulerWarning,
+      message: schedulerWarning || 'Job deleted. Spotify playlists were not deleted.',
+      home: homeModel()
+    };
+  }
+
+  function runJob(jobId) {
+    var result = ns.SyncEngine.runJob(jobId);
+    return {
+      ok: !result.errors.length,
+      result: result,
+      home: homeModel()
+    };
+  }
+
+  function repair() {
+    ns.SheetStore.initialize({ render: false });
+    var warning = '';
+    try {
+      ns.Scheduler.reconcile({ refresh: false });
+    } catch (error) {
+      warning = 'Data repaired. Automation needs attention: ' + ns.Core.safeErrorMessage(error);
+    }
+    if (ns.SheetViews && ns.SheetViews.initializeWorkbook) {
+      ns.SheetViews.initializeWorkbook();
     } else {
-      applyFriendlyPlaylistLinks();
+      ns.SheetStore.refreshSummary();
     }
     return {
       ok: true,
-      jobId: written.jobId,
-      rowNumber: written.rowNumber,
-      message: data.mode === 'edit' ? 'Job updated.' : 'Job added.'
+      warning: warning,
+      message: warning || 'Spoti Sync data is ready.',
+      home: homeModel()
     };
   }
 
   ns.JobEditor = {
-    showAdd: function () { openEditor('add'); },
-    showEdit: function () { openEditor('edit'); },
+    automationModes: AUTOMATION,
+    getHomeModel: homeModel,
+    getEditorModel: editorModel,
     save: save,
+    deleteJob: deleteJob,
+    runJob: runJob,
+    repair: repair,
     refreshCatalog: function () {
       var catalog = getCatalog(true);
-      rememberConfiguredNames(catalog);
+      rememberCatalog(catalog);
       return catalog;
     },
-    refreshPlaylistNames: function () {
-      if (!ns.Auth.isConnected()) { return false; }
-      rememberConfiguredNames(getCatalog(false));
-      return true;
-    },
-    applyFriendlyPlaylistLinks: applyFriendlyPlaylistLinks,
+    getCachedPlaylistName: rememberedName,
+
     _normalizePlaylist: normalizePlaylist,
+    _cleanStoredLabel: cleanStoredLabel,
     _findPlaylistById: findPlaylistById,
-    _sourceDisplay: sourceDisplay,
-    _targetDisplay: targetDisplay,
-    _stripFriendlyLabel: stripFriendlyLabel,
-    _presentationForRow: presentationForRow,
-    _frequencyEditorState: frequencyEditorState,
-    _frequencyRequestLabel: frequencyRequestLabel,
-    _writeConfiguration: writeConfiguration
+    _automationForJob: automationForJob,
+    _intervalForPayload: intervalForPayload,
+    _editorConfig: editorConfig
   };
 })(SpotiSync);
