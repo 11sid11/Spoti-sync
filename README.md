@@ -45,9 +45,9 @@ Use **Spoti Sync → Add Job…** to create a job and **Edit Selected Job…** a
 
 Jobs shows friendly linked playlist names such as `Playlist · Road Trip ↗` and `Shareable Likes ↗`. The hidden Spotify playlist ID remains the synchronization source of truth, so renaming a playlist does not change which resource the job targets.
 
-`Frequency` uses a guided dropdown for common schedules such as Daily, 7 days, 14 days, 30 days, and 90 days. The dropdown is intentionally not exhaustive: any valid custom interval can still be typed as `Every N days`, from 1 to 3650 days (for example, `Every 21 days`).
+`Frequency` has one canonical set of common presets used by both the Jobs sheet and the Job editor: Daily, 2, 3, 7, 10, 14, 30, 60, and 90 days. In the Job editor, choose **Custom interval…** to enter any other whole-number schedule from 1 to 3650 days, such as 21. Existing custom jobs reopen with their interval preserved. The server-side Frequency parser remains authoritative for validation.
 
-`Initialize / Repair Sheets` migrates the pre-1.3 Jobs/History layout into this structure. Existing Spotify Client ID, OAuth tokens, configured playlist IDs, and scheduler trigger remain in the same installation. In 1.3.5 it also refreshes friendly playlist names when Spotify is connected; failure to resolve a display name never removes the stored playlist ID.
+`Initialize / Repair Sheets` migrates the pre-1.3 Jobs/History layout into this structure. Existing Spotify Client ID, OAuth tokens, configured playlist IDs, and scheduler trigger remain in the same installation. Friendly playlist-name resolution is presentation-only; failure to resolve a display name never removes the stored playlist ID.
 
 ## Playlist heartbeat
 
@@ -133,7 +133,7 @@ node scripts/test-heartbeat.js
 node scripts/test-update-checker.js
 ```
 
-The generated local bundle lives under ignored `dist/`; production installation is assembled directly from committed source modules.
+`docs/source-files.json` is the canonical ordered list of Apps Script source modules used by both the Node build and the GitHub Pages browser installer. The generated local bundle lives under ignored `dist/`; production installation is assembled directly from committed source modules.
 
 ## Current platform constraints
 
