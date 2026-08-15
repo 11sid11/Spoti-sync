@@ -5,23 +5,8 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const sourceFiles = [
-  '00_Core.gs',
-  '10_Storage.gs',
-  '20_SpotifyAuth.gs',
-  '30_SpotifyApi.gs',
-  '40_Sources.gs',
-  '50_Strategies.gs',
-  '60_SheetStore.gs',
-  '65_SheetViews.gs',
-  '70_SyncEngine.gs',
-  '75_PlaylistHeartbeat.gs',
-  '80_Scheduler.gs',
-  '85_UpdateChecker.gs',
-  '90_Ui.gs',
-  '92_JobEditor.gs',
-  '99_Entrypoints.gs'
-];
+const sourceManifestPath = path.join(root, 'docs', 'source-files.json');
+const sourceFiles = JSON.parse(fs.readFileSync(sourceManifestPath, 'utf8'));
 
 function buildBundle() {
   const banner = [
