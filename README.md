@@ -30,19 +30,24 @@ Typical jobs:
 
 1. **Liked Songs → MIRROR → Shareable Likes**, daily.
 2. **Liked Songs → APPEND → Likes Archive**, every 10 days.
+3. **Spotify playlist → MIRROR/APPEND → another playlist**, with playlist selection by name in the Job editor.
 
 ## Google Sheet layout
 
 Spoti Sync 1.3 uses four operational sheets:
 
 - **Dashboard** — connection health, scheduler state, release state, latest run, next automation, and recent activity.
-- **Jobs** — compact job configuration with friendly behavior/frequency labels, health, and next-eligible state. Internal playlist IDs, stable job IDs, and telemetry are kept in hidden columns.
+- **Jobs** — compact job configuration with friendly playlist names, behavior/frequency labels, health, and next-eligible state. Stable Spotify playlist IDs, job IDs, and telemetry stay in hidden columns.
 - **Schedule** — scheduler status, cloud runtime, trigger count, daily execution window, last background check, and upcoming eligible jobs.
 - **Activity** — bounded execution history with result, additions/removals, duration, warnings, and errors.
 
+Use **Spoti Sync → Add Job…** to create a job and **Edit Selected Job…** after selecting an existing Jobs row. The sidebar lets you choose **Liked Songs** or a Spotify playlist as the source, choose an existing target playlist, create a new target playlist, or paste a Spotify playlist link when needed. Playlist search happens inside the sidebar after one catalog load; typing in search does not create additional Apps Script executions.
+
+Jobs shows friendly linked playlist names such as `Playlist · Road Trip ↗` and `Shareable Likes ↗`. The hidden Spotify playlist ID remains the synchronization source of truth, so renaming a playlist does not change which resource the job targets.
+
 `Frequency` uses a guided dropdown for common schedules such as Daily, 7 days, 14 days, 30 days, and 90 days. The dropdown is intentionally not exhaustive: any valid custom interval can still be typed as `Every N days`, from 1 to 3650 days (for example, `Every 21 days`).
 
-`Initialize / Repair Sheets` migrates the pre-1.3 Jobs/History layout into this structure. Existing Spotify Client ID, OAuth tokens, configured playlist IDs, and scheduler trigger remain in the same installation.
+`Initialize / Repair Sheets` migrates the pre-1.3 Jobs/History layout into this structure. Existing Spotify Client ID, OAuth tokens, configured playlist IDs, and scheduler trigger remain in the same installation. In 1.3.5 it also refreshes friendly playlist names when Spotify is connected; failure to resolve a display name never removes the stored playlist ID.
 
 ## Playlist heartbeat
 
@@ -75,6 +80,8 @@ Spoti Sync uses exactly one clock trigger named `spotiSyncScheduler`. Enabling i
 
 Google Apps Script selects a time within the configured hourly window. Spoti Sync currently configures the `03:00–04:00` window in the spreadsheet timezone. The `Schedule` sheet therefore reports eligibility and the window rather than inventing an exact future minute.
 
+The Job editor does not create, delete, or duplicate scheduler triggers. Opening it loads the playlist catalog once (with a short user cache), searching is client-side, and saving happens in one server execution.
+
 ## Updates
 
 Starting with 1.2, Spoti Sync automatically checks `docs/version.json` for release metadata. In 1.3, update state appears in the redesigned Dashboard and Schedule views.
@@ -101,7 +108,7 @@ At a high level:
 4. Replace `Code.gs` and save.
 5. Reload the Sheet and open **Spoti Sync → Setup**.
 6. Create a Spotify Developer app, register the callback URI shown by Spoti Sync, select **Web API**, and paste your Client ID.
-7. Authorize Spotify, add jobs, preview, run once, then enable the daily scheduler.
+7. Authorize Spotify, add a job from **Spoti Sync → Add Job…**, preview, run once, then enable the daily scheduler.
 8. Use **Schedule** to verify that the scheduler is enabled and trigger count is `1`.
 
 No web-app deployment, local server, Node.js installation, or `clasp` setup is required for end users.
@@ -110,7 +117,7 @@ No web-app deployment, local server, Node.js installation, or `clasp` setup is r
 
 Spoti Sync intentionally excludes `user-library-modify`, so Liked Songs remains read-only. Playlist modification scopes are used only for explicitly configured targets, including their managed description heartbeat.
 
-Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's bound project. Job configuration, activity, scheduler/update telemetry, and the tiny heartbeat rotation index live in the user's Sheet or Document Properties.
+Sensitive OAuth credentials are stored in Apps Script **User Properties** inside the user's bound project. Job configuration, activity, scheduler/update telemetry, friendly playlist-name cache, and the tiny heartbeat rotation index live in the user's Sheet or Document Properties.
 
 See [`SECURITY.md`](SECURITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -121,6 +128,7 @@ node scripts/build.js
 node scripts/test.js
 node scripts/test-scheduler.js
 node scripts/test-sheet-repair.js
+node scripts/test-job-editor.js
 node scripts/test-heartbeat.js
 node scripts/test-update-checker.js
 ```
@@ -129,7 +137,7 @@ The generated local bundle lives under ignored `dist/`; production installation 
 
 ## Current platform constraints
 
-Spoti Sync targets the current Spotify Web API `/playlists/{id}/items` endpoints and `PUT /playlists/{id}` for playlist descriptions. Spotify Development Mode requirements and limits are controlled by Spotify and may change independently of Spoti Sync.
+Spoti Sync targets the current Spotify Web API `/playlists/{id}/items` endpoints, `GET /me/playlists`, `POST /me/playlists`, and `PUT /playlists/{id}` for playlist descriptions. Spotify Development Mode requirements and limits are controlled by Spotify and may change independently of Spoti Sync.
 
 ## License
 
