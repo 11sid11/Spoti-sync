@@ -2,6 +2,26 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.4.1 — 2026-08-16
+
+### Fixed
+
+- Fixed the blank v1.4 sidebar caused by the generated browser script declaring `function top()`, which collides with the Apps Script iframe's existing browser `top` global and prevents the client script from starting.
+- Renamed the sidebar header helper to a non-conflicting identifier without changing job, scheduler, Spotify, migration, or playlist behavior.
+
+### Resilience
+
+- Added static **Loading Spoti Sync…** content so a client-side boot failure cannot present a completely unexplained empty sidebar.
+- Added compact runtime `error` and `unhandledrejection` fallbacks that show a safe startup message without exposing credentials or private job state.
+
+### Tests
+
+- Added regression coverage against the production-generated sidebar HTML/client script: the script must parse, must not redeclare the browser `top` global, must retain Apps Script RPC wiring, and must include visible boot/error states.
+
+### Upgrade note
+
+- Install the 1.4.1 bundle in the same Apps Script project, save, reload the Sheet, then choose **Spoti Sync → Open Spoti Sync**. No Spotify reconnection, Client ID re-entry, playlist-ID re-entry, job recreation, scheduler recreation, or repair step is required.
+
 ## 1.4.0 — 2026-08-15
 
 ### Simplified
