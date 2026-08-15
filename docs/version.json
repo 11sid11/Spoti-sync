@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "version": "1.3.8",
+  "version": "1.4.0",
   "channel": "stable",
   "released_at": "2026-08-15",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Unifies Frequency presets, limits, Behavior labels, job identity helpers, and row classification so Sheet and Job editor consume one canonical configuration model.",
-    "Replaces the Job editor Frequency datalist with explicit presets plus a Custom interval option for any valid 1–3650 day schedule.",
-    "Removes the dead prompt-based Add Job flow and duplicate refresh/installer module-list paths without changing scheduler, Spotify sync, OAuth, or playlist-ID state."
+    "Moves normal Spoti Sync configuration and operation into one sidebar app while Google Sheets becomes status and Activity output.",
+    "Replaces manual scheduler controls with per-job Off, Daily, or Every N days automation and automatic one-trigger reconciliation.",
+    "Adds per-job playlist-description status control, manual Sync now for Automation Off jobs, and a safe v1.3.8 migration that preserves IDs, OAuth state, and Activity history."
   ]
 }
