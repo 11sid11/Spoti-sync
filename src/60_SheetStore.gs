@@ -47,9 +47,13 @@ var SpotiSync = SpotiSync || {};
     });
   }
 
+  function isBlankValue(value) {
+    return value === '' || value === null || value === undefined;
+  }
+
   function isBlankRow(row) {
     return !row.some(function (value) {
-      return value !== '' && value !== null;
+      return !isBlankValue(value);
     });
   }
 
@@ -169,6 +173,18 @@ var SpotiSync = SpotiSync || {};
     return Utilities.formatDate(date, timezone(), pattern || 'EEE, MMM d · h:mm a');
   }
 
+  function hasJobDefinition(row) {
+    return row.slice(JOB_COL.NAME - 1, JOB_COL.FREQUENCY).some(function (value) {
+      return !isBlankValue(value);
+    });
+  }
+
+  function hasLegacyJobDefinition(row) {
+    return row.slice(1, 7).some(function (value) {
+      return !isBlankValue(value);
+    });
+  }
+
   function legacyJobToStoredRow(row) {
     var sourceType = parseSourceLabel(row[2]);
     var strategy = parseBehaviorLabel(row[5]);
@@ -204,12 +220,6 @@ var SpotiSync = SpotiSync || {};
     ];
   }
 
-  function hasJobDefinition(row) {
-    return row.slice(1, JOB_COL.FREQUENCY).some(function (value) {
-      return value !== '' && value !== null;
-    });
-  }
-
   function looksLikePartialLegacyJob(row) {
     var strategy = ns.Core.trim(row[5]).toUpperCase();
     var intervalDays = Number(row[6]);
@@ -237,22 +247,18 @@ var SpotiSync = SpotiSync || {};
     rows.forEach(function (row) {
       var current = row.slice(0, JOB_HEADERS.length);
 
-      // A failed v1.3.0 migration could leave the new headers in row 1 while
-      // row data was still in the v1.2 A:M layout. Recover that configuration
-      // instead of asking the user to paste playlist IDs again.
+      // Recover the specific partially migrated v1.2 row shape. This repair is
+      // invoked only by Initialize / Repair Sheets, never by a normal sync.
       if (looksLikePartialLegacyJob(current)) {
         repaired.push(legacyJobToStoredRow(current.slice(0, LEGACY_JOB_HEADERS.length)));
         changed = true;
         return;
       }
 
-      // Old scheduler-panel values in O:P, plus health text generated from
-      // those remnants, can make otherwise empty rows look like disabled jobs.
-      // A real job always has definition data in B:F.
+      // Checkbox validation can make an otherwise empty future row read back as
+      // FALSE. Presentation-only cells such as Health/Next can also be populated.
+      // Neither case is a job and neither should trigger a migration rewrite.
       if (!hasJobDefinition(current)) {
-        if (!isBlankRow(current)) {
-          changed = true;
-        }
         return;
       }
 
@@ -263,36 +269,32 @@ var SpotiSync = SpotiSync || {};
       repaired.push(current);
     });
 
-    if (repaired.length !== rows.length) {
-      changed = true;
-    }
     return { rows: repaired, changed: changed };
   }
 
-  function replaceSheetData(sheet, headers, rows) {
+  function replaceSheetData(sheet, headers, rows, legacyWidth) {
     var values = [headers].concat(rows || []);
-    var maxRows = sheet.getMaxRows();
-    var maxColumns = sheet.getMaxColumns();
+    var usedRows = Math.max(sheet.getLastRow(), values.length, 1);
+    var managedColumns = Math.max(headers.length, Number(legacyWidth || 0));
 
-    // Old layouts can leave strict validation rules behind even after content
-    // and formatting are cleared. Remove those rules before writing converted
-    // friendly values such as "Liked Songs" and "Exact Mirror".
-    sheet.getRange(1, 1, maxRows, maxColumns).clearDataValidations();
+    // Migration work is bounded to the rows/columns owned by Spoti Sync. Avoid
+    // whole-sheet clears so formatting outside the migrated data is untouched.
+    sheet.getRange(1, 1, usedRows, managedColumns).clearDataValidations();
 
-    // Write the replacement dataset before clearing any old trailing cells. If
-    // this write fails, the legacy values have not been destructively cleared.
+    // Write the replacement dataset before clearing old trailing content. If
+    // the write fails, legacy job configuration is still present in the sheet.
     sheet.getRange(1, 1, values.length, headers.length).setValues(values);
 
-    if (maxRows > values.length) {
-      sheet.getRange(values.length + 1, 1, maxRows - values.length, maxColumns).clearContent();
+    if (usedRows > values.length) {
+      sheet.getRange(values.length + 1, 1, usedRows - values.length, managedColumns).clearContent();
     }
-    if (maxColumns > headers.length) {
-      sheet.getRange(1, headers.length + 1, values.length, maxColumns - headers.length).clearContent();
+    if (managedColumns > headers.length) {
+      sheet.getRange(1, headers.length + 1, values.length, managedColumns - headers.length).clearContent();
     }
-    sheet.clearFormats();
   }
 
-  function ensureJobsSheet() {
+  function ensureJobsSheet(options) {
+    var settings = options || {};
     var ss = spreadsheet();
     var sheet = ss.getSheetByName(ns.Constants.SHEETS.JOBS) || ss.insertSheet(ns.Constants.SHEETS.JOBS);
     var lastRow = sheet.getLastRow();
@@ -303,21 +305,24 @@ var SpotiSync = SpotiSync || {};
     var repairResult;
 
     if (isEmpty) {
-      replaceSheetData(sheet, JOB_HEADERS, []);
+      replaceSheetData(sheet, JOB_HEADERS, [], LEGACY_JOB_HEADERS.length);
     } else if (headersMatch(header, LEGACY_JOB_HEADERS)) {
+      if (!settings.repair) {
+        throw new Error('The Jobs sheet needs migration. Run Spoti Sync → Initialize / Repair Sheets once.');
+      }
       if (lastRow > 1) {
         migratedRows = sheet.getRange(2, 1, lastRow - 1, LEGACY_JOB_HEADERS.length).getValues()
-          .filter(function (row) { return !isBlankRow(row); })
+          .filter(hasLegacyJobDefinition)
           .map(legacyJobToStoredRow);
       }
-      replaceSheetData(sheet, JOB_HEADERS, migratedRows);
+      replaceSheetData(sheet, JOB_HEADERS, migratedRows, LEGACY_JOB_HEADERS.length);
     } else if (headersMatch(header, JOB_HEADERS)) {
-      if (lastRow > 1) {
+      if (settings.repair && lastRow > 1) {
         repairResult = repairCurrentJobRows(
           sheet.getRange(2, 1, lastRow - 1, JOB_HEADERS.length).getValues()
         );
         if (repairResult.changed) {
-          replaceSheetData(sheet, JOB_HEADERS, repairResult.rows);
+          replaceSheetData(sheet, JOB_HEADERS, repairResult.rows, JOB_HEADERS.length);
         }
       }
     } else {
@@ -347,14 +352,14 @@ var SpotiSync = SpotiSync || {};
     width = Math.max(sheet.getLastColumn(), ACTIVITY_HEADERS.length, LEGACY_HISTORY_HEADERS.length);
     header = sheet.getRange(1, 1, 1, width).getValues()[0];
     if (lastRow === 0 || (lastRow === 1 && isBlankRow(header))) {
-      replaceSheetData(sheet, ACTIVITY_HEADERS, []);
+      replaceSheetData(sheet, ACTIVITY_HEADERS, [], LEGACY_HISTORY_HEADERS.length);
     } else if (headersMatch(header, LEGACY_HISTORY_HEADERS)) {
       if (lastRow > 1) {
         migratedRows = sheet.getRange(2, 1, lastRow - 1, LEGACY_HISTORY_HEADERS.length).getValues()
           .filter(function (row) { return !isBlankRow(row); })
           .map(legacyActivityToRow);
       }
-      replaceSheetData(sheet, ACTIVITY_HEADERS, migratedRows);
+      replaceSheetData(sheet, ACTIVITY_HEADERS, migratedRows, LEGACY_HISTORY_HEADERS.length);
     } else if (!headersMatch(header, ACTIVITY_HEADERS)) {
       throw new Error('The Activity sheet layout is not recognized. Spoti Sync left it unchanged.');
     }
@@ -362,7 +367,10 @@ var SpotiSync = SpotiSync || {};
   }
 
   function normalizeJob(row, rowNumber) {
-    if (isBlankRow(row)) { return null; }
+    // A checkbox-only FALSE row is not a disabled job. A real job always has
+    // definition data in B:F, even when Enabled is unchecked.
+    if (!hasJobDefinition(row)) { return null; }
+
     var enabled = normalizeBoolean(row[JOB_COL.ENABLED - 1]);
     var job = {
       rowNumber: rowNumber,
@@ -466,7 +474,7 @@ var SpotiSync = SpotiSync || {};
     activityHeaders: ACTIVITY_HEADERS.slice(),
 
     initialize: function () {
-      ensureJobsSheet();
+      ensureJobsSheet({ repair: true });
       ensureActivitySheet();
       refreshViews();
     },
@@ -543,8 +551,6 @@ var SpotiSync = SpotiSync || {};
         LAST_LIKED_COUNT: String(summary.likedCount || 0),
         LAST_RUN_WARNINGS: String((summary.warnings || []).length)
       });
-      // Render once after the complete run instead of re-rendering Jobs after
-      // every individual job result.
       refreshRunViews();
     },
 

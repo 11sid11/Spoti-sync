@@ -118,6 +118,7 @@ See [`SECURITY.md`](SECURITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
 node scripts/build.js
 node scripts/test.js
 node scripts/test-scheduler.js
+node scripts/test-sheet-repair.js
 node scripts/test-heartbeat.js
 node scripts/test-update-checker.js
 ```

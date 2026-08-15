@@ -98,6 +98,27 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert.strictEqual(repaired.rows[0][10], '1234567890AB');
 })();
 
+(function testCheckboxOnlyFutureRowsAreBlankAndDoNotTriggerRepair() {
+  const realJob = [
+    true, 'Shareable Likes', 'Liked Songs', 'Open playlist ↗', 'Exact Mirror', 'Daily',
+    '✓ Healthy', '2026-08-16', 'job_keep', '', '1234567890AB', '', '', 'Success', 0, 0, ''
+  ];
+  const checkboxOnly = [false, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+  const rows = [realJob].concat(Array.from({ length: 49 }, () => checkboxOnly.slice()));
+
+  const repaired = SheetStore._repairCurrentJobRows(rows);
+  assert.strictEqual(repaired.changed, false);
+  assert.strictEqual(repaired.rows.length, 1);
+  assert.strictEqual(repaired.rows[0][8], 'job_keep');
+  assert.strictEqual(repaired.rows[0][10], '1234567890AB');
+
+  const parsed = SheetStore._parseJobRows(rows, 2);
+  assert.strictEqual(parsed.jobs.length, 1);
+  assert.strictEqual(parsed.errors.length, 0);
+  assert.strictEqual(parsed.jobs[0].name, 'Shareable Likes');
+  assert.strictEqual(parsed.jobs[0].targetPlaylist, '1234567890AB');
+})();
+
 (function testFrequencyCanNeverInheritLegacyStrategyDropdown() {
   assert(
     sheetViews.includes('sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();'),
@@ -110,6 +131,25 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert(
     !/getRange\(2,\s*columns\.FREQUENCY[^\n]*\)\.setDataValidation/.test(sheetViews),
     'Frequency must remain free text so it cannot receive the MIRROR / APPEND dropdown.'
+  );
+})();
+
+(function testJobsMigrationIsExplicitBoundedAndNonDestructiveToFormatting() {
+  assert(
+    sheetStoreSource.includes('ensureJobsSheet({ repair: true });'),
+    'Initialize / Repair Sheets must be the explicit current-layout repair entry point.'
+  );
+  assert(
+    sheetStoreSource.includes('if (settings.repair && lastRow > 1)'),
+    'Normal ensureJobsSheet calls must not repair/rewrite the current Jobs layout.'
+  );
+  assert(
+    !sheetStoreSource.includes('sheet.clearFormats();'),
+    'Jobs/Activity migration must not clear whole-sheet formatting.'
+  );
+  assert(
+    !sheetStoreSource.includes('sheet.getMaxRows()') && !sheetStoreSource.includes('sheet.getMaxColumns()'),
+    'Migration must be bounded to the used Spoti Sync range rather than the entire sheet.'
   );
 })();
 
