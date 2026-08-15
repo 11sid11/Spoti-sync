@@ -2,6 +2,29 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.6 — 2026-08-15
+
+### Fixed
+
+- Fixed the v1.3.5 friendly-name renderer so empty future Jobs rows stay blank instead of being populated with `Liked Songs`.
+- Friendly Source/Target rendering now first confirms that a row is actually configured using non-presentation job state; Source display text is never used as the job-existence signal.
+- `Initialize / Repair Sheets` now runs a narrow presentation cleanup first on current layouts, preventing v1.3.5-polluted empty rows from being assigned Job IDs during repair.
+- Existing real Liked Songs jobs and playlist-source jobs continue to show friendly Source/Target labels while hidden Spotify playlist IDs remain authoritative.
+
+### Safety
+
+- No scheduler behavior, trigger count, OAuth state, playlist IDs, heartbeat state, Frequency parsing, or migration semantics were changed.
+- The hotfix does not add `clearFormats()`, whole-sheet rewrites, or new scheduled executions.
+
+### Tests
+
+- Added regression coverage for one real Liked Songs job, a real playlist-source job, and 49 v1.3.5-polluted future rows, verifying that empty Source/Target cells are restored and remain non-jobs.
+- Preserved the existing v1.3.3 checkbox-only row, v1.3.4 Frequency, scheduler, and installer safety checks.
+
+### Upgrade note
+
+- Install the 1.3.6 bundle in the same Apps Script project, reload the Sheet, then run **Spoti Sync → Initialize / Repair Sheets** once. The pre-repair cleanup removes the accidental `Liked Songs` presentation values before repair. Existing Spotify Client ID, OAuth tokens, playlist IDs, scheduler state, heartbeat state, and real job data are preserved.
+
 ## 1.3.5 — 2026-08-15
 
 ### Added
