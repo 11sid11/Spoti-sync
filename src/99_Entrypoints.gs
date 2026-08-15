@@ -25,8 +25,21 @@ function spotiSyncSetup() {
   SpotiSync.Ui.showSetup();
 }
 
+function spotiSyncPrepareJobsForRepair_() {
+  'use strict';
+  try {
+    if (SpotiSync.JobEditor && SpotiSync.JobEditor.applyFriendlyPlaylistLinks) {
+      SpotiSync.JobEditor.applyFriendlyPlaylistLinks();
+    }
+  } catch (ignored) {
+    // Legacy layouts may require SheetStore migration before the Job editor can
+    // render them. In that case Initialize / Repair Sheets remains authoritative.
+  }
+}
+
 function spotiSyncInitializeSheets() {
   'use strict';
+  spotiSyncPrepareJobsForRepair_();
   SpotiSync.SheetStore.initialize();
   try {
     SpotiSync.JobEditor.refreshPlaylistNames();
@@ -38,6 +51,7 @@ function spotiSyncInitializeSheets() {
 
 function spotiSyncInitializeSheetsFromMenu() {
   'use strict';
+  spotiSyncPrepareJobsForRepair_();
   SpotiSync.SheetStore.initialize();
   try {
     SpotiSync.JobEditor.refreshPlaylistNames();

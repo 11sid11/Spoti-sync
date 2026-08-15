@@ -37,6 +37,14 @@ function load(filename) {
 
 load('00_Core.gs');
 load('60_SheetStore.gs');
+context.SpotiSync.Storage = {
+  documentProperties() {
+    return {
+      getProperty() { return ''; },
+      setProperty() {}
+    };
+  }
+};
 context.SpotiSync.SheetViews = {
   refreshJobsStatus() {},
   refreshSchedule() {},
@@ -102,6 +110,50 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
   assert.strictEqual(parsed.jobs[0].targetPlaylist, 'ABCDEFGHIJKL');
 })();
 
+(function testFriendlyRenderingKeepsFutureRowsEmpty() {
+  const columns = SheetStore._jobColumns;
+  const likedJob = [
+    true, 'Shareable Likes', 'Liked Songs', 'Shareable Likes ↗', 'Exact Mirror', 'Daily', '', '',
+    'job_liked', '', 'ABCDEFGHIJKL', '', '', '', 0, 0, ''
+  ];
+  const playlistJob = [
+    true, 'Road Trip Mirror', 'Playlist · Road Trip ↗', 'Road Trip Copy ↗', 'Exact Mirror', 'Every 7 days', '', '',
+    'job_playlist', '1234567890AB', 'ZYXWVUTSRQPO', '', '', '', 0, 0, ''
+  ];
+  const pollutedEmptyRows = Array.from({ length: 49 }, () => [
+    false, '', 'Liked Songs', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+  ]);
+
+  assert.strictEqual(JobEditor._isConfiguredJobRow(likedJob, columns), true);
+  assert.strictEqual(JobEditor._isConfiguredJobRow(playlistJob, columns), true);
+  pollutedEmptyRows.forEach((row) => {
+    assert.strictEqual(JobEditor._isConfiguredJobRow(row, columns), false);
+  });
+
+  const likedPresentation = JobEditor._presentationForRow(likedJob, columns);
+  assert.strictEqual(likedPresentation.sourceText, 'Liked Songs');
+  assert.strictEqual(likedPresentation.targetText, 'Shareable Likes ↗');
+
+  const playlistPresentation = JobEditor._presentationForRow(playlistJob, columns);
+  assert.strictEqual(playlistPresentation.sourceText, 'Playlist · Road Trip ↗');
+  assert.strictEqual(playlistPresentation.targetText, 'Road Trip Copy ↗');
+  assert.strictEqual(playlistPresentation.sourceUrl, 'https://open.spotify.com/playlist/1234567890AB');
+  assert.strictEqual(playlistPresentation.targetUrl, 'https://open.spotify.com/playlist/ZYXWVUTSRQPO');
+
+  pollutedEmptyRows.forEach((row) => {
+    const presentation = JobEditor._presentationForRow(row, columns);
+    assert.strictEqual(presentation.sourceText, '');
+    assert.strictEqual(presentation.targetText, '');
+
+    const cleaned = row.slice();
+    cleaned[columns.SOURCE - 1] = presentation.sourceText;
+    cleaned[columns.TARGET - 1] = presentation.targetText;
+    const parsed = SheetStore._parseJobRows([cleaned], 2);
+    assert.strictEqual(parsed.jobs.length, 0);
+    assert.strictEqual(parsed.errors.length, 0);
+  });
+})();
+
 (function testExecutionBudgetAndSafetyGuards() {
   assert(editorSource.includes('CacheService.getUserCache()'));
   assert(editorSource.includes("'/me/playlists?limit=50&offset=0'"));
@@ -120,6 +172,15 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
   assert(entrypoints.includes('SpotiSync.JobEditor.showAdd()'));
   assert(entrypoints.includes('SpotiSync.JobEditor.showEdit()'));
   assert(entrypoints.includes('spotiSyncSaveJobEditor'));
+})();
+
+(function testRepairCleansPresentationBeforeMigration() {
+  const prepareCall = entrypoints.indexOf('spotiSyncPrepareJobsForRepair_();');
+  const initializeCall = entrypoints.indexOf('SpotiSync.SheetStore.initialize();');
+  assert(prepareCall !== -1);
+  assert(initializeCall !== -1);
+  assert(prepareCall < initializeCall);
+  assert(entrypoints.includes('SpotiSync.JobEditor.applyFriendlyPlaylistLinks();'));
 })();
 
 (function testOldPromptIsRuntimeRedirected() {

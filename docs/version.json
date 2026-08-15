@@ -1,14 +1,13 @@
 {
   "schema": 1,
-  "version": "1.3.5",
+  "version": "1.3.6",
   "channel": "stable",
   "released_at": "2026-08-15",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Adds Add Job and Edit Selected Job sidebars with playlist selection by name.",
-    "Shows friendly Spotify playlist names in Jobs while keeping stable playlist IDs hidden and authoritative.",
-    "Lets users select existing targets or create a new Spotify playlist without copying playlist IDs.",
-    "Keeps playlist searching client-side, adds no scheduler triggers, and preserves v1.3.3/v1.3.4 sheet protections."
+    "Fixes v1.3.5 friendly-name rendering so empty future Jobs rows remain blank instead of showing Liked Songs.",
+    "Cleans already-polluted Source/Target presentation cells before Initialize / Repair Sheets can interpret them as job data.",
+    "Preserves real Liked Songs and playlist-source friendly labels, hidden playlist IDs, scheduler state, and existing migration protections."
   ]
 }

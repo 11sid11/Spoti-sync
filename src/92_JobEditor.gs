@@ -157,6 +157,46 @@ var SpotiSync = SpotiSync || {};
     return builder.build();
   }
 
+  function isConfiguredJobRow(row, columns) {
+    var hasIdentity = ns.Core.trim(row[columns.ID - 1]) ||
+      ns.Core.trim(row[columns.NAME - 1]) ||
+      ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]) ||
+      ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
+    var hasSchedule = ns.Core.trim(row[columns.BEHAVIOR - 1]) &&
+      ns.Core.trim(row[columns.FREQUENCY - 1]);
+    return Boolean(hasIdentity || hasSchedule);
+  }
+
+  function presentationForRow(row, columns) {
+    var sourceId;
+    var targetId;
+    var sourceName;
+    var targetName;
+
+    // Source/Target are presentation fields. A v1.3.5 empty row may already
+    // contain the accidental "Liked Songs" label, so never use Source text to
+    // decide whether the row is a configured job.
+    if (!isConfiguredJobRow(row, columns)) {
+      return { sourceText: '', sourceUrl: '', targetText: '', targetUrl: '' };
+    }
+
+    sourceId = ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]);
+    targetId = ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
+    sourceName = resolveKnownName(sourceId, row[columns.SOURCE - 1]);
+    targetName = resolveKnownName(targetId, row[columns.TARGET - 1]);
+
+    return {
+      sourceText: sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)
+        ? sourceDisplay(sourceName) : 'Liked Songs',
+      sourceUrl: sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)
+        ? playlistUrl(sourceId) : '',
+      targetText: targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)
+        ? targetDisplay(targetName) : ns.Core.trim(row[columns.TARGET - 1]),
+      targetUrl: targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)
+        ? playlistUrl(targetId) : ''
+    };
+  }
+
   function applyFriendlyPlaylistLinks() {
     var sheet = ns.SheetStore._ensureJobsSheet();
     var columns = ns.SheetStore._jobColumns;
@@ -166,8 +206,8 @@ var SpotiSync = SpotiSync || {};
     var sourceValues = [];
     var targetValues = [];
 
-    // Source is presentation-only in v1.3.5. Playlist selection lives in the
-    // Add/Edit Job sidebar, while the hidden playlist ID remains authoritative.
+    // Source is presentation-only. Playlist selection lives in the Add/Edit
+    // Job sidebar, while hidden playlist IDs remain authoritative.
     sheet.getRange(2, columns.SOURCE, maxDataRows, 1).clearDataValidations();
     sheet.getRange(1, columns.SOURCE).setNote(
       'Use Spoti Sync → Add Job or Edit Selected Job to choose Liked Songs or a Spotify playlist.'
@@ -178,22 +218,9 @@ var SpotiSync = SpotiSync || {};
     if (lastRow < 2) { return; }
     rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
     rows.forEach(function (row) {
-      var sourceId = ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]);
-      var targetId = ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
-      var sourceName = resolveKnownName(sourceId, row[columns.SOURCE - 1]);
-      var targetName = resolveKnownName(targetId, row[columns.TARGET - 1]);
-
-      if (sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)) {
-        sourceValues.push([richText(sourceDisplay(sourceName), playlistUrl(sourceId))]);
-      } else {
-        sourceValues.push([richText('Liked Songs', '')]);
-      }
-
-      if (targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)) {
-        targetValues.push([richText(targetDisplay(targetName), playlistUrl(targetId))]);
-      } else {
-        targetValues.push([richText(ns.Core.trim(row[columns.TARGET - 1]), '')]);
-      }
+      var presentation = presentationForRow(row, columns);
+      sourceValues.push([richText(presentation.sourceText, presentation.sourceUrl)]);
+      targetValues.push([richText(presentation.targetText, presentation.targetUrl)]);
     });
 
     sheet.getRange(2, columns.SOURCE, sourceValues.length, 1).setRichTextValues(sourceValues);
@@ -515,6 +542,8 @@ var SpotiSync = SpotiSync || {};
     _sourceDisplay: sourceDisplay,
     _targetDisplay: targetDisplay,
     _stripFriendlyLabel: stripFriendlyLabel,
+    _isConfiguredJobRow: isConfiguredJobRow,
+    _presentationForRow: presentationForRow,
     _writeConfiguration: writeConfiguration
   };
 
