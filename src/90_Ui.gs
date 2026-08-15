@@ -143,9 +143,10 @@ var SpotiSync = SpotiSync || {};
 
   ns.Ui = {
     showSetup: function () {
-      ns.SheetStore.initialize();
+      // Check update metadata before initializing views so Setup performs one
+      // full Sheet render rather than initializing and immediately redrawing.
       ns.UpdateChecker.check({ force: false });
-      ns.SheetStore.refreshAllViews();
+      ns.SheetStore.initialize();
       var html = HtmlService.createHtmlOutput(setupHtml()).setTitle('Spoti Sync Setup');
       SpreadsheetApp.getUi().showSidebar(html);
     },
@@ -159,57 +160,6 @@ var SpotiSync = SpotiSync || {};
       ns.SheetStore.refreshAllViews();
       var html = HtmlService.createHtmlOutput(updateHtml(status)).setWidth(520).setHeight(390);
       SpreadsheetApp.getUi().showModalDialog(html, 'Spoti Sync Updates');
-    },
-
-    promptAddJob: function () {
-      var ui = SpreadsheetApp.getUi();
-      var response;
-      var name;
-      var sourceType;
-      var sourcePlaylist = '';
-      var targetPlaylist;
-      var strategy;
-      var intervalDays;
-
-      response = ui.prompt('Add Spoti Sync job', 'Job name (for example: Shareable Likes)', ui.ButtonSet.OK_CANCEL);
-      if (response.getSelectedButton() !== ui.Button.OK) { return; }
-      name = response.getResponseText();
-
-      response = ui.prompt('Source', 'Enter LIKED_SONGS or PLAYLIST', ui.ButtonSet.OK_CANCEL);
-      if (response.getSelectedButton() !== ui.Button.OK) { return; }
-      sourceType = ns.Core.trim(response.getResponseText()).toUpperCase();
-      if ([ns.Constants.SOURCE_TYPES.LIKED_SONGS, ns.Constants.SOURCE_TYPES.PLAYLIST].indexOf(sourceType) === -1) {
-        throw new Error('Source must be LIKED_SONGS or PLAYLIST.');
-      }
-
-      if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
-        response = ui.prompt('Source playlist', 'Paste the Spotify playlist URL, URI, or ID.', ui.ButtonSet.OK_CANCEL);
-        if (response.getSelectedButton() !== ui.Button.OK) { return; }
-        sourcePlaylist = response.getResponseText();
-      }
-
-      response = ui.prompt('Target playlist', 'Paste the Spotify playlist URL, URI, or ID that Spoti Sync may modify.', ui.ButtonSet.OK_CANCEL);
-      if (response.getSelectedButton() !== ui.Button.OK) { return; }
-      targetPlaylist = response.getResponseText();
-
-      response = ui.prompt('Behavior', 'Enter MIRROR for an exact mirror or APPEND for an append-only archive.', ui.ButtonSet.OK_CANCEL);
-      if (response.getSelectedButton() !== ui.Button.OK) { return; }
-      strategy = ns.Core.trim(response.getResponseText()).toUpperCase();
-
-      response = ui.prompt('Frequency', 'Run every how many days? Enter a whole number such as 1 or 10.', ui.ButtonSet.OK_CANCEL);
-      if (response.getSelectedButton() !== ui.Button.OK) { return; }
-      intervalDays = Number(response.getResponseText());
-
-      ns.SheetStore.addJob({
-        enabled: true,
-        name: name,
-        sourceType: sourceType,
-        sourcePlaylist: sourcePlaylist,
-        targetPlaylist: targetPlaylist,
-        strategy: strategy,
-        intervalDays: intervalDays
-      });
-      ui.alert('Job added', 'The job is enabled. Use Spoti Sync → Preview Enabled Jobs before your first write.', ui.ButtonSet.OK);
     },
 
     showPreview: function () {
