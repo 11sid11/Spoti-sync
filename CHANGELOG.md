@@ -2,6 +2,37 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.5 — 2026-08-15
+
+### Added
+
+- Added **Spoti Sync → Add Job…** and **Edit Selected Job…** sidebars so users can configure jobs without typing Spotify playlist IDs.
+- Added searchable source and target playlist pickers backed by the current user's Spotify playlist catalog.
+- Added a manual Spotify playlist URL/ID fallback for playlists that are not convenient to select from the catalog.
+- Added optional target-playlist creation directly from the Job editor using the existing playlist modification scopes.
+
+### Improved
+
+- Jobs now shows friendly linked playlist names such as `Playlist · Road Trip ↗` and `Shareable Likes ↗` while keeping stable Spotify playlist IDs in hidden columns as the synchronization source of truth.
+- Source selection is no longer an ambiguous `Playlist ↗` dropdown. `Liked Songs` and Spotify playlist sources are chosen explicitly in the Job editor.
+- Playlist catalog search is entirely client-side after the sidebar opens. Opening the editor performs one Apps Script execution; saving performs one execution; no scheduler triggers or periodic jobs are added.
+- Playlist catalog responses are cached briefly per user, and normal scheduled syncs do not call Spotify solely to refresh display names.
+- `Initialize / Repair Sheets` refreshes friendly names when Spotify is available, but display-name failures never remove or replace stored playlist IDs.
+
+### Safety
+
+- Preserved the v1.3.3 explicit-only migration path, checkbox-only row protections, bounded sheet repair, and no-`clearFormats()` runtime behavior.
+- Preserved v1.3.4 Frequency validation and custom `Every N days` schedules.
+- Job edits update the configured row and hidden playlist IDs without rewriting the Jobs dataset or touching OAuth credentials, heartbeat state, or scheduler state.
+
+### Tests
+
+- Added regression coverage for friendly playlist labels, duplicate playlist names resolved by ID, playlist-source parsing, Job editor menu wiring, caching/scheduler guards, and installer inclusion.
+
+### Upgrade note
+
+- Install the 1.3.5 bundle in the same Apps Script project and run **Spoti Sync → Initialize / Repair Sheets** once. Existing Spotify Client ID, OAuth tokens, playlist IDs, scheduler trigger/state, heartbeat state, telemetry, and job data are preserved.
+
 ## 1.3.4 — 2026-08-15
 
 ### Improved
