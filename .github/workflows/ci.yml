@@ -35,3 +35,5 @@ jobs:
         run: node scripts/test-heartbeat.js
       - name: Run update checker behavior tests
         run: node scripts/test-update-checker.js
+      - name: Run docs freshness checks
+        run: node scripts/test-docs.js

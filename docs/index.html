@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Spoti Sync: self-deployed Spotify playlist automation that runs in your Google account.">
-  <title>Spoti Sync — guided self-deploy</title>
+  <meta name="description" content="Spoti Sync keeps Spotify playlists synced automatically from your own Google account with Google Apps Script.">
+  <title>Spoti Sync — Spotify playlist sync, self-hosted in Google Apps Script</title>
   <link rel="canonical" href="https://sid.is-a.dev/Spoti-sync/">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,9 +13,8 @@
     <div class="wrap nav">
       <a class="brand" href="#top">Spoti Sync</a>
       <nav aria-label="Primary navigation">
-        <a href="#how">How it works</a>
+        <a href="#install">Install</a>
         <a href="#update">Update</a>
-        <a href="#setup">Setup</a>
         <a href="#privacy">Privacy</a>
         <a href="https://github.com/11sid11/Spoti-sync">GitHub</a>
       </nav>
@@ -24,207 +23,125 @@
 
   <main id="top">
     <section class="hero wrap">
-      <div>
-        <p class="eyebrow">SELF-DEPLOYED · ONE SIMPLE APP</p>
-        <h1>Keep Spotify playlists in sync without running a server.</h1>
-        <p class="lede">Spoti Sync runs on Google Apps Script inside your own Google account. Open one sidebar, choose a source and target, select a behavior and automation interval, and let Google run it in the cloud.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">SELF-HOSTED · GOOGLE APPS SCRIPT</p>
+        <h1>Your Spotify playlists, kept in sync.</h1>
+        <p class="lede">Spoti Sync runs from your own Google account. Pick a source, a target, a behavior and an automation interval — Google handles the rest.</p>
         <div class="actions">
-          <a class="button primary" href="#setup">Start setup</a>
-          <a class="button secondary" href="downloads/SpotiSync.gs" download>Download Apps Script</a>
+          <a class="button primary" href="#install">Install Spoti Sync</a>
+          <a class="button secondary" href="https://github.com/11sid11/Spoti-sync">View on GitHub</a>
         </div>
-        <div class="trust-row" aria-label="Project properties">
-          <span>No backend</span><span>No client secret</span><span>No always-on PC</span><span>Open source</span>
-        </div>
+        <a class="text-link" href="#update">Already installed? Update →</a>
+        <p class="quiet">No server to run. No subscription. No always-on computer.</p>
       </div>
-      <aside class="hero-card" aria-label="Example automations">
-        <p class="card-label">EXAMPLE JOBS</p>
-        <div class="flow"><strong>Liked Songs</strong><span>→</span><strong>Shareable Likes</strong><small>Exact Mirror · Daily</small></div>
-        <div class="flow"><strong>Liked Songs</strong><span>→</span><strong>Likes Archive</strong><small>Append Only · Every 10 days</small></div>
-      </aside>
+
+      <div class="sync-demo" aria-label="Example Spoti Sync job">
+        <div class="sync-node">
+          <span class="node-label">SOURCE</span>
+          <strong>Liked Songs</strong>
+        </div>
+        <div class="sync-line" aria-hidden="true"><span>→</span></div>
+        <div class="sync-node target">
+          <span class="node-label">TARGET</span>
+          <strong>Shareable Likes</strong>
+        </div>
+        <div class="sync-status"><span class="status-dot"></span> Synced automatically</div>
+      </div>
     </section>
 
-    <section id="how" class="section muted-section">
+    <section class="section soft">
       <div class="wrap">
         <p class="eyebrow">HOW IT WORKS</p>
-        <h2>One sidebar controls it. Your Sheet records it.</h2>
-        <div class="architecture">
-          <div class="arch-box"><strong>GitHub Pages</strong><span>Guide + install bundle only</span></div>
-          <span class="arrow">→</span>
-          <div class="arch-box accent"><strong>Your Google account</strong><span>Spoti Sync sidebar + Apps Script automation</span></div>
-          <span class="arrow">→</span>
-          <div class="arch-box"><strong>Your Spotify account</strong><span>Liked Songs + configured playlists</span></div>
+        <h2>One sidebar. Four choices. Done.</h2>
+        <div class="steps">
+          <article><span>1</span><h3>Install</h3><p>Paste the Spoti Sync bundle into a Google Sheet's bound Apps Script project.</p></article>
+          <article><span>2</span><h3>Open</h3><p>Reload the Sheet and choose <strong>Spoti Sync → Open Spoti Sync</strong>.</p></article>
+          <article><span>3</span><h3>Connect</h3><p>Use the sidebar to configure your Spotify Developer app and authorize Spotify.</p></article>
+          <article><span>4</span><h3>Add a job</h3><p>Choose source, target, behavior and automation. Save.</p></article>
+          <article><span>5</span><h3>Done</h3><p>Spoti Sync keeps the automation in your Google account and records status in the Sheet.</p></article>
         </div>
-        <p class="note">The site never receives your Spotify token, Client ID, playlist contents, or Google authorization. Google Sheets is used for read-only status, Activity history, and hidden local job persistence — not as a second configuration UI.</p>
+      </div>
+    </section>
+
+    <section class="section wrap">
+      <p class="eyebrow">THE JOB MODEL</p>
+      <h2>Only the choices that matter.</h2>
+      <div class="choices">
+        <article><span>Source</span><strong>Liked Songs<br>or Spotify playlist</strong></article>
+        <article><span>Target</span><strong>Existing playlist<br>or create new</strong></article>
+        <article><span>Behavior</span><strong>Exact Mirror<br>or Append Only</strong></article>
+        <article><span>Automation</span><strong>Off · Daily<br>Every N days</strong></article>
+      </div>
+      <p class="section-intro">Optional per job: keep the target playlist description updated with the latest successful sync time.</p>
+    </section>
+
+    <section id="install" class="section dark-section">
+      <div class="wrap install-grid">
+        <div>
+          <p class="eyebrow light">INSTALL</p>
+          <h2>From blank Sheet to first sync.</h2>
+          <p class="dark-copy">The website only builds the Apps Script bundle. Spoti Sync itself runs inside the Google Sheet you create.</p>
+          <div class="actions">
+            <button class="button primary" type="button" data-copy-bundle data-status-target="installStatus">Copy Apps Script</button>
+            <button class="button dark-secondary" type="button" data-download-bundle data-status-target="installStatus">Download SpotiSync.gs</button>
+          </div>
+          <p id="installStatus" class="status-text" aria-live="polite"></p>
+        </div>
+
+        <ol class="install-steps">
+          <li><span>1</span><div><strong>Create a blank Google Sheet</strong><p>Open <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a>.</p></div></li>
+          <li><span>2</span><div><strong>Open Apps Script</strong><p>Choose Extensions → Apps Script and replace the contents of <code>Code.gs</code>.</p></div></li>
+          <li><span>3</span><div><strong>Paste and save</strong><p>Use the bundle from this page, then reload the Sheet.</p></div></li>
+          <li><span>4</span><div><strong>Open Spoti Sync</strong><p>Choose <strong>Spoti Sync → Open Spoti Sync</strong>.</p></div></li>
+          <li><span>5</span><div><strong>Connect Spotify and add a job</strong><p>The sidebar shows the Redirect URI, guides connection, and lets you create the first job.</p></div></li>
+        </ol>
       </div>
     </section>
 
     <section id="update" class="section wrap">
-      <p class="eyebrow">UPDATE AN EXISTING INSTALLATION</p>
-      <h2>Keep the installation. Replace only the code.</h2>
-      <p class="section-intro">Spoti Sync checks GitHub release metadata automatically but never silently replaces executable code. Update the same bound Apps Script project so your Spotify connection, jobs, playlist IDs, Activity history, and scheduler state remain local.</p>
-      <div class="two-col">
+      <div class="section-heading">
         <div>
-          <div class="actions">
-            <button class="button primary" type="button" data-copy-bundle data-status-target="updateCopyStatus">Copy latest Apps Script</button>
-            <a class="button secondary" href="downloads/SpotiSync.gs" download data-status-target="updateCopyStatus">Download latest</a>
-          </div>
-          <p id="updateCopyStatus" class="status-text" aria-live="polite"></p>
+          <p class="eyebrow">UPDATE</p>
+          <h2>Keep your Sheet. Replace only the code.</h2>
         </div>
-        <div class="code-card">
-          <ol>
-            <li>Open your existing Sheet → <strong>Extensions → Apps Script</strong>.</li>
-            <li>Replace all contents of <code>Code.gs</code> with the latest bundle and Save.</li>
-            <li>Reload the same Sheet.</li>
-            <li>Choose <strong>Spoti Sync → Open Spoti Sync</strong> once. The local data migration runs automatically.</li>
-          </ol>
-        </div>
+        <span class="version-chip">Latest: <strong data-current-version>stable</strong></span>
       </div>
-      <p class="note">Spoti Sync 1.4 keeps your Client ID, OAuth tokens, Job IDs, source/target playlist IDs, custom intervals, Activity history, heartbeat phrase state, and compatible scheduler trigger. You do not need to reconnect Spotify or recreate jobs.</p>
-      <p class="note"><strong>Updates are intentionally not installed silently.</strong> You explicitly replace the code so repository changes cannot silently rewrite Apps Script in your Google account.</p>
-    </section>
-
-    <section id="setup" class="section wrap">
-      <p class="eyebrow">GUIDED SETUP</p>
-      <h2>Install once, then use one Spoti Sync sidebar.</h2>
-      <p class="section-intro">Nothing runs on your laptop after setup. The Apps Script installation lives with your Google Sheet and Google runs scheduled jobs in the cloud.</p>
-
-      <div class="progress-card">
-        <div><strong>Your setup progress</strong><span id="progressText">0 of 7 complete</span></div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-        <button id="resetProgress" class="link-button" type="button">Reset checklist</button>
-      </div>
-
-      <ol class="steps">
-        <li class="step" data-step="1">
-          <div class="step-check"><input id="step1" type="checkbox"><label for="step1">1</label></div>
-          <div class="step-body">
-            <h3>Create a blank Google Sheet</h3>
-            <p>This Sheet becomes your Spoti Sync installation. It keeps status, Activity history, and hidden local job records.</p>
-            <a class="button secondary" href="https://sheets.new" target="_blank" rel="noopener">Create blank Sheet</a>
-          </div>
-        </li>
-
-        <li class="step" data-step="2">
-          <div class="step-check"><input id="step2" type="checkbox"><label for="step2">2</label></div>
-          <div class="step-body">
-            <h3>Open Apps Script</h3>
-            <p>In the Sheet, choose <strong>Extensions → Apps Script</strong>. Delete the default contents of <code>Code.gs</code>.</p>
-          </div>
-        </li>
-
-        <li class="step" data-step="3">
-          <div class="step-check"><input id="step3" type="checkbox"><label for="step3">3</label></div>
-          <div class="step-body">
-            <h3>Paste the Spoti Sync bundle</h3>
-            <p>Copy the generated bundle below, paste it into <code>Code.gs</code>, and press Save.</p>
-            <div class="actions">
-              <button id="copyBundle" class="button primary" type="button">Copy Apps Script</button>
-              <a class="button secondary" href="downloads/SpotiSync.gs" download>Download file</a>
-            </div>
-            <p id="copyStatus" class="status-text" aria-live="polite"></p>
-          </div>
-        </li>
-
-        <li class="step" data-step="4">
-          <div class="step-check"><input id="step4" type="checkbox"><label for="step4">4</label></div>
-          <div class="step-body">
-            <h3>Reload and open Spoti Sync</h3>
-            <p>Reload the spreadsheet. Choose <strong>Spoti Sync → Open Spoti Sync</strong>. This single sidebar is where normal setup, jobs, syncs, and automation are managed.</p>
-          </div>
-        </li>
-
-        <li class="step" data-step="5">
-          <div class="step-check"><input id="step5" type="checkbox"><label for="step5">5</label></div>
-          <div class="step-body">
-            <h3>Create your Spotify Developer app</h3>
-            <p>The sidebar shows your installation's Redirect URI. Create a Spotify app, add that exact URI, select <strong>Web API</strong>, and copy its Client ID.</p>
-            <a class="button secondary" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Open Spotify Developer Dashboard</a>
-          </div>
-        </li>
-
-        <li class="step" data-step="6">
-          <div class="step-check"><input id="step6" type="checkbox"><label for="step6">6</label></div>
-          <div class="step-body">
-            <h3>Connect Spotify and add a job</h3>
-            <p>Paste the Client ID into the same sidebar and authorize Spotify. Then choose <strong>+ Add job</strong>, select Liked Songs or a Spotify playlist as the source, and select/create the target.</p>
-            <div class="example-grid">
-              <div><strong>Shareable mirror</strong><code>Liked Songs → Shareable Likes</code><span>Exact Mirror · Daily</span></div>
-              <div><strong>Append-only archive</strong><code>Liked Songs → Likes Archive</code><span>Append Only · Every 10 days</span></div>
-            </div>
-          </div>
-        </li>
-
-        <li class="step" data-step="7">
-          <div class="step-check"><input id="step7" type="checkbox"><label for="step7">7</label></div>
-          <div class="step-body">
-            <h3>Choose automation and save</h3>
-            <p>Choose <strong>Off</strong>, <strong>Daily</strong>, or <strong>Every N days</strong>. Spoti Sync automatically keeps the correct single Apps Script trigger; there is no separate scheduler setup.</p>
-            <p>Use <strong>Sync now</strong> on any job card whenever you want, including jobs with Automation Off. The visible <strong>Spoti Sync</strong> sheet shows read-only status and <strong>Activity</strong> keeps run history.</p>
-            <p>By default, successful jobs also add a compact Spotify playlist-description status such as <code>Kept fresh with Spoti Sync ✨ · sid.is-a.dev · Synced Saturday at 2:22 AM</code>. You can disable this per job without affecting the music sync or blanking the current description.</p>
-            <p class="success-callout">Done. Google Apps Script runs in your account even when your devices are off.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
-
-    <section id="behavior" class="section muted-section">
-      <div class="wrap two-col">
+      <p class="section-intro">Use the same bound Apps Script project so your Spotify connection, jobs, playlist IDs, Activity history and automation state stay in place.</p>
+      <p class="section-intro">Updates are intentionally not installed silently. You choose when to replace the Apps Script bundle.</p>
+      <div class="update-card">
+        <ol>
+          <li>Open the existing Sheet → <strong>Extensions → Apps Script</strong>.</li>
+          <li>Replace <code>Code.gs</code> with the latest bundle and save.</li>
+          <li>Reload the Sheet.</li>
+          <li>Open <strong>Spoti Sync → Open Spoti Sync</strong>.</li>
+        </ol>
         <div>
-          <p class="eyebrow">SYNC BEHAVIOR</p>
-          <h2>Few concepts, predictable behavior.</h2>
-          <dl class="definitions">
-            <dt>Exact Mirror</dt><dd>Missing source tracks are added and obsolete managed target tracks are removed.</dd>
-            <dt>Append Only</dt><dd>Missing source tracks are appended. Existing target tracks are never removed.</dd>
-            <dt>Automation</dt><dd>Off, Daily, or Every N days. One daily Apps Script trigger evaluates every automated job; longer intervals do not create extra triggers.</dd>
-            <dt>Playlist status</dt><dd>Optional per job. A successful sync can refresh the target description with Spoti Sync wording, <code>sid.is-a.dev</code>, and the completion time. Playlist names are never changed.</dd>
-            <dt>Google Sheet</dt><dd>The visible Sheet is status and Activity output. Job configuration stays in the Spoti Sync sidebar.</dd>
-          </dl>
-        </div>
-        <div class="code-card">
-          <pre><code>Spoti Sync sidebar
-✓ Connect
-✓ Add / edit / delete jobs
-✓ Sync now
-✓ Automation
-
-Spoti Sync sheet
-✓ Read-only status
-
-Activity
-✓ Past results + warnings</code></pre>
+          <button class="button primary" type="button" data-copy-bundle data-status-target="updateStatus">Copy latest Apps Script</button>
+          <button class="button secondary" type="button" data-download-bundle data-status-target="updateStatus">Download latest</button>
+          <p id="updateStatus" class="status-text" aria-live="polite"></p>
         </div>
       </div>
     </section>
 
-    <section id="privacy" class="section wrap">
-      <p class="eyebrow">PRIVACY & SECURITY</p>
-      <h2>No central credential store.</h2>
-      <div class="feature-grid">
-        <article><h3>OAuth + PKCE</h3><p>No Spotify client secret is required. Refresh/access tokens stay in Apps Script User Properties.</p></article>
-        <article><h3>Liked Songs stays read-only</h3><p>Spoti Sync intentionally does not request Spotify's library-modification scope, so it cannot unlike tracks.</p></article>
-        <article><h3>Explicit targets only</h3><p>Playlist-item and optional description writes are limited to playlist IDs configured as job targets.</p></article>
-        <article><h3>Local operational data</h3><p>Job records, status and Activity remain in the user's own bound Sheet or Apps Script properties.</p></article>
-        <article><h3>Explicit updates</h3><p>Version checks never silently replace Apps Script code. Users explicitly install repository updates.</p></article>
-      </div>
-      <p><a href="https://github.com/11sid11/Spoti-sync/blob/main/SECURITY.md">Read the security policy →</a></p>
-    </section>
-
-    <section id="troubleshooting" class="section muted-section">
-      <div class="wrap">
-        <p class="eyebrow">TROUBLESHOOTING</p>
-        <h2>Common setup issues.</h2>
-        <details><summary>The Spoti Sync menu did not appear</summary><p>Make sure the bundle was saved in the Apps Script project bound to the same Sheet, then reload the spreadsheet tab.</p></details>
-        <details><summary>Spotify says the redirect URI is invalid</summary><p>Use the exact Redirect URI shown after choosing <strong>Spoti Sync → Open Spoti Sync</strong>.</p></details>
-        <details><summary>A playlist returns HTTP 403</summary><p>Use a target playlist the authorized Spotify account can modify. Description updates additionally require ownership; if only that optional update is rejected, the music sync records a warning.</p></details>
-        <details><summary>Where did Jobs and Schedule go?</summary><p>Spoti Sync 1.4 intentionally makes the sidebar the only normal configuration surface. Jobs is hidden local persistence and a legacy Schedule sheet is preserved hidden. Use the visible Spoti Sync and Activity sheets for status/history.</p></details>
-        <details><summary>Why didn't Spoti Sync change my playlist description?</summary><p>Edit the job and make sure <strong>Show Spoti Sync status in playlist description</strong> is enabled. Turning it off deliberately skips description updates without blanking the current description.</p></details>
-        <details><summary>Can I share one installation between multiple Spotify accounts?</summary><p>Use a separate Sheet/Apps Script copy for each primary Google + Spotify account so OAuth state and automation remain unambiguous.</p></details>
+    <section id="privacy" class="section soft">
+      <div class="wrap privacy">
+        <div>
+          <p class="eyebrow">PRIVACY</p>
+          <h2>Your automation stays in your accounts.</h2>
+        </div>
+        <div>
+          <p>Spoti Sync runs in your Google Apps Script environment. Spotify tokens are stored in Apps Script User Properties — not on a hosted Spoti Sync backend or this GitHub Pages site.</p>
+          <p><a class="text-link" href="https://github.com/11sid11/Spoti-sync/blob/main/SECURITY.md">Read the security model →</a></p>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="footer">
-    <div class="wrap"><span>Spoti Sync · sid.is-a.dev · MIT License</span><a href="https://github.com/11sid11/Spoti-sync">Source on GitHub</a></div>
+    <div class="wrap">
+      <span>Spoti Sync · sid.is-a.dev · MIT</span>
+      <a href="https://github.com/11sid11/Spoti-sync">Source on GitHub</a>
+    </div>
   </footer>
 
   <script src="app.js"></script>
