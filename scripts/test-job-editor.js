@@ -56,7 +56,10 @@ load('92_JobEditor.gs');
 
 const { JobEditor, SheetStore } = context.SpotiSync;
 const editorSource = fs.readFileSync(path.join(root, 'src', '92_JobEditor.gs'), 'utf8');
+const uiSource = fs.readFileSync(path.join(root, 'src', '90_Ui.gs'), 'utf8');
 const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'), 'utf8');
+const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.gs'), 'utf8');
+const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), 'utf8');
 
 (function testPlaylistNormalization() {
   const playlist = JobEditor._normalizePlaylist({
@@ -89,7 +92,7 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
   assert.strictEqual(JobEditor._stripFriendlyLabel('Open playlist ↗'), '');
 })();
 
-(function testFriendlyPlaylistSourceStillParses() {
+(function testFriendlyPlaylistSourceStillParsesFromHiddenId() {
   const parsed = SheetStore._parseJobRows([[
     true,
     'Playlist mirror',
@@ -124,10 +127,10 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
     false, '', 'Liked Songs', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
   ]);
 
-  assert.strictEqual(JobEditor._isConfiguredJobRow(likedJob, columns), true);
-  assert.strictEqual(JobEditor._isConfiguredJobRow(playlistJob, columns), true);
+  assert.strictEqual(SheetStore.isConfiguredJobRow(likedJob), true);
+  assert.strictEqual(SheetStore.isConfiguredJobRow(playlistJob), true);
   pollutedEmptyRows.forEach((row) => {
-    assert.strictEqual(JobEditor._isConfiguredJobRow(row, columns), false);
+    assert.strictEqual(SheetStore.isConfiguredJobRow(row), false);
   });
 
   const likedPresentation = JobEditor._presentationForRow(likedJob, columns);
@@ -154,9 +157,52 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
   });
 })();
 
+(function testFrequencyEditorInitializesPresetAndCustomSchedules() {
+  const presets = SheetStore.frequencyPresets();
+  const daily = JobEditor._frequencyEditorState('Daily', 1, presets);
+  const tenDays = JobEditor._frequencyEditorState('Every 10 days', 10, presets);
+  const custom = JobEditor._frequencyEditorState('Every 21 days', 21, presets);
+
+  assert.strictEqual(daily.selection, 'Daily');
+  assert.strictEqual(daily.customDays, 1);
+  assert.strictEqual(tenDays.selection, 'Every 10 days');
+  assert.strictEqual(tenDays.customDays, 10);
+  assert.strictEqual(custom.selection, '__CUSTOM__');
+  assert.strictEqual(custom.customDays, 21);
+})();
+
+(function testFrequencyEditorSubmitsCanonicalLabelsToServerParser() {
+  assert.strictEqual(JobEditor._frequencyRequestLabel('Daily', ''), 'Daily');
+  assert.strictEqual(JobEditor._frequencyRequestLabel('Every 10 days', ''), 'Every 10 days');
+  assert.strictEqual(JobEditor._frequencyRequestLabel('__CUSTOM__', 21), 'Every 21 days');
+  assert.strictEqual(SheetStore._parseFrequency(JobEditor._frequencyRequestLabel('__CUSTOM__', 21)), 21);
+  assert.throws(
+    () => SheetStore._parseFrequency(JobEditor._frequencyRequestLabel('__CUSTOM__', 0)),
+    /1 to 3650/
+  );
+  assert.throws(
+    () => SheetStore._parseFrequency(JobEditor._frequencyRequestLabel('__CUSTOM__', 3651)),
+    /1 to 3650/
+  );
+})();
+
+(function testJobEditorConsumesCanonicalConfiguration() {
+  assert(editorSource.includes('ns.SheetStore.frequencyPresets()'));
+  assert(editorSource.includes('ns.SheetStore.frequencyLimits()'));
+  assert(editorSource.includes('ns.SheetStore.behaviorOptions()'));
+  assert(editorSource.includes('ns.SheetStore.createJobId()'));
+  assert(editorSource.includes('ns.SheetStore.isConfiguredJobRow(row)'));
+  assert(!editorSource.includes('var FREQUENCY_PRESETS = ['));
+  assert(!editorSource.includes('function newJobId()'));
+  assert(!editorSource.includes('<datalist'));
+  assert(editorSource.includes('Custom interval…'));
+  assert(editorSource.includes('id="frequencyPreset"'));
+  assert(editorSource.includes('id="customFrequencyDays" type="number"'));
+})();
+
 (function testExecutionBudgetAndSafetyGuards() {
   assert(editorSource.includes('CacheService.getUserCache()'));
-  assert(editorSource.includes("'/me/playlists?limit=50&offset=0'"));
+  assert(editorSource.includes("'/me/playlists?limit=' + ns.Constants.PAGE_SIZE + '&offset=0'"));
   assert(editorSource.includes("'/me/playlists'"));
   assert(editorSource.includes('clearDataValidations()'));
   assert(!editorSource.includes('clearFormats()'));
@@ -166,25 +212,38 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
   assert(editorSource.includes('targetSearch'));
 })();
 
-(function testMenuUsesJobEditor() {
+(function testMenuUsesOnlyJobEditorImplementation() {
   assert(entrypoints.includes(".addItem('Add Job…', 'spotiSyncAddJob')"));
   assert(entrypoints.includes(".addItem('Edit Selected Job…', 'spotiSyncEditJob')"));
   assert(entrypoints.includes('SpotiSync.JobEditor.showAdd()'));
   assert(entrypoints.includes('SpotiSync.JobEditor.showEdit()'));
   assert(entrypoints.includes('spotiSyncSaveJobEditor'));
+  assert(!uiSource.includes('promptAddJob: function'));
+  assert(!editorSource.includes('ns.Ui.promptAddJob'));
+  assert(!sheetStoreSource.includes('addJob: function'));
+  assert(!sheetStoreSource.includes('function storedRowForNewJob'));
 })();
 
-(function testRepairCleansPresentationBeforeMigration() {
-  const prepareCall = entrypoints.indexOf('spotiSyncPrepareJobsForRepair_();');
-  const initializeCall = entrypoints.indexOf('SpotiSync.SheetStore.initialize();');
-  assert(prepareCall !== -1);
-  assert(initializeCall !== -1);
-  assert(prepareCall < initializeCall);
-  assert(entrypoints.includes('SpotiSync.JobEditor.applyFriendlyPlaylistLinks();'));
+(function testRepairEntrypointsShareOneImplementation() {
+  assert(entrypoints.includes('function spotiSyncInitializeSheetsCore_()'));
+  assert(entrypoints.includes('return spotiSyncInitializeSheetsCore_();'));
+  assert(entrypoints.includes('spotiSyncInitializeSheetsCore_();'));
+  assert(!entrypoints.includes('spotiSyncPrepareJobsForRepair_'));
 })();
 
-(function testOldPromptIsRuntimeRedirected() {
-  assert.strictEqual(typeof context.SpotiSync.Ui.promptAddJob, 'function');
+(function testViewIntegrationIsExplicitNotMonkeyPatched() {
+  assert(sheetViews.includes('ns.JobEditor.applyFriendlyPlaylistLinks();'));
+  assert(!editorSource.includes('originalRefreshJobsStatus'));
+  assert(!editorSource.includes('originalRefreshAll'));
 })();
 
-console.log('Job editor tests passed.');
+(function testSetupDoesNotImmediatelyRenderTwice() {
+  const setupBlock = uiSource.slice(
+    uiSource.indexOf('showSetup: function'),
+    uiSource.indexOf('showOAuthResult: function')
+  );
+  assert(setupBlock.includes('ns.SheetStore.initialize();'));
+  assert(!setupBlock.includes('refreshAllViews'));
+})();
+
+console.log('Job editor ownership, playlist presentation, and Frequency UX tests passed.');

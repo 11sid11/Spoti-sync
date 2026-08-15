@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "version": "1.3.7",
+  "version": "1.3.8",
   "channel": "stable",
   "released_at": "2026-08-15",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Removes the obsolete Jobs Source dropdown so Source stays display-only and no longer flashes during refresh.",
-    "Keeps Enabled checkbox, Behavior dropdown, and Frequency dropdown ownership in SheetViews while JobEditor remains the single Source/Target presentation owner.",
-    "Preserves Spotify credentials, playlist IDs, scheduler state, v1.3.6 empty-row cleanup, and all existing sync behavior."
+    "Unifies Frequency presets, limits, Behavior labels, job identity helpers, and row classification so Sheet and Job editor consume one canonical configuration model.",
+    "Replaces the Job editor Frequency datalist with explicit presets plus a Custom interval option for any valid 1–3650 day schedule.",
+    "Removes the dead prompt-based Add Job flow and duplicate refresh/installer module-list paths without changing scheduler, Spotify sync, OAuth, or playlist-ID state."
   ]
 }

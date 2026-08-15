@@ -2,23 +2,7 @@
   'use strict';
 
   const storageKey = 'spoti-sync-setup-progress-v1';
-  const sourceFiles = [
-    '00_Core.gs',
-    '10_Storage.gs',
-    '20_SpotifyAuth.gs',
-    '30_SpotifyApi.gs',
-    '40_Sources.gs',
-    '50_Strategies.gs',
-    '60_SheetStore.gs',
-    '65_SheetViews.gs',
-    '70_SyncEngine.gs',
-    '75_PlaylistHeartbeat.gs',
-    '80_Scheduler.gs',
-    '85_UpdateChecker.gs',
-    '90_Ui.gs',
-    '92_JobEditor.gs',
-    '99_Entrypoints.gs'
-  ];
+  const sourceManifestUrl = new URL('source-files.json', window.location.href).href;
   const rawSourceBase = 'https://raw.githubusercontent.com/11sid11/Spoti-sync/main/src/';
 
   const checkboxes = Array.from(document.querySelectorAll('.step-check input[type="checkbox"]'));
@@ -31,6 +15,7 @@
   );
   const copyStatus = document.getElementById('copyStatus');
 
+  let sourceFilesPromise = null;
   let bundlePromise = null;
 
   function readProgress() {
@@ -59,6 +44,30 @@
     if (progressBar) {
       progressBar.style.width = `${percent}%`;
     }
+  }
+
+  function getSourceFiles() {
+    if (!sourceFilesPromise) {
+      sourceFilesPromise = fetch(sourceManifestUrl, { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} while loading source-files.json`);
+          }
+          return response.json();
+        })
+        .then((files) => {
+          if (!Array.isArray(files) || files.length === 0 ||
+              files.some((filename) => typeof filename !== 'string' || !/^[0-9A-Za-z_-]+\.gs$/.test(filename))) {
+            throw new Error('source-files.json is invalid.');
+          }
+          return files.slice();
+        })
+        .catch((error) => {
+          sourceFilesPromise = null;
+          throw error;
+        });
+    }
+    return sourceFilesPromise;
   }
 
   async function fetchSource(filename) {
@@ -93,10 +102,11 @@
 
   function getBundle() {
     if (!bundlePromise) {
-      bundlePromise = Promise.all(sourceFiles.map(async (filename) => {
-        const content = (await fetchSource(filename)).trimEnd();
-        return `// ---- ${filename} ----\n${content}`;
-      }))
+      bundlePromise = getSourceFiles()
+        .then((sourceFiles) => Promise.all(sourceFiles.map(async (filename) => {
+          const content = (await fetchSource(filename)).trimEnd();
+          return `// ---- ${filename} ----\n${content}`;
+        })))
         .then((parts) => `${buildBanner()}${parts.join('\n\n')}\n`)
         .catch((error) => {
           bundlePromise = null;

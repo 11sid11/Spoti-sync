@@ -2,6 +2,39 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.8 — 2026-08-15
+
+### Improved
+
+- Replaced the Job editor Frequency datalist with an explicit preset selector plus **Custom interval…**. Existing custom schedules reopen with their day count preserved, and custom values still pass through the canonical server-side Frequency parser.
+- Centralized Frequency presets/limits and Behavior labels/options in `SheetStore`, so Jobs validation and the Job editor consume the same configuration definitions.
+- Runtime source identity now comes from the hidden stable source-playlist ID instead of visible Source presentation text.
+- Added one canonical `docs/source-files.json` manifest consumed by both the Node bundle build and the GitHub Pages browser installer.
+
+### Cleanup
+
+- Removed the dead prompt-based Add Job implementation and its obsolete `SheetStore.addJob` path; Add/Edit Job now has one runtime implementation in `JobEditor`.
+- Removed duplicate job-ID generation and duplicate configured-row classification from `JobEditor`; both now use `SheetStore`.
+- Replaced the JobEditor monkey-patch of SheetViews refresh functions with an explicit Source/Target presentation call from `SheetViews`.
+- Consolidated the two Initialize / Repair entrypoint implementations behind one shared helper.
+- Removed an immediate duplicate full-view refresh from Setup.
+- Renamed permissive legacy playlist/source helpers to make their migration-only responsibility explicit.
+
+### Safety
+
+- Preserved the single daily scheduler trigger, due-job calculation, Spotify API behavior, OAuth state, playlist IDs, job IDs, heartbeat state, Activity history, and explicit-only bounded migration behavior.
+- Source and Target remain presentation-only in Jobs. Enabled, Behavior, and Frequency retain their existing Sheet validations.
+- No new scheduled executions or Spotify API calls were introduced for Frequency configuration.
+
+### Tests
+
+- Added ownership regressions for canonical Frequency/Behavior definitions, hidden-ID source identity, custom Frequency initialization/save behavior, one installer source manifest, removal of dead Add Job code, explicit view integration, and single-render Setup behavior.
+- Preserved the v1.3.3–v1.3.7 migration, checkbox-row, Source/Target presentation, scheduler, heartbeat, update, and installer safety coverage.
+
+### Upgrade note
+
+- Install the 1.3.8 bundle in the same Apps Script project, reload the Sheet, then run **Spoti Sync → Initialize / Repair Sheets** once. Existing Spotify Client ID, OAuth tokens, playlist IDs, job IDs, scheduler state, heartbeat state, Activity history, and job configuration are preserved.
+
 ## 1.3.7 — 2026-08-15
 
 ### Fixed
