@@ -27,6 +27,8 @@ jobs:
         run: node scripts/test-scheduler.js
       - name: Run partial migration repair checks
         run: node scripts/test-sheet-repair.js
+      - name: Run job editor tests
+        run: node scripts/test-job-editor.js
       - name: Run playlist heartbeat tests
         run: node scripts/test-heartbeat.js
       - name: Run update checker behavior tests

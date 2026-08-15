@@ -5,7 +5,8 @@ function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Spoti Sync')
     .addItem('Setup', 'spotiSyncSetup')
-    .addItem('Add Sync Job', 'spotiSyncAddJob')
+    .addItem('Add Job…', 'spotiSyncAddJob')
+    .addItem('Edit Selected Job…', 'spotiSyncEditJob')
     .addSeparator()
     .addItem('Preview Enabled Jobs', 'spotiSyncPreviewEnabledJobs')
     .addItem('Sync Now', 'spotiSyncRunNow')
@@ -27,12 +28,22 @@ function spotiSyncSetup() {
 function spotiSyncInitializeSheets() {
   'use strict';
   SpotiSync.SheetStore.initialize();
+  try {
+    SpotiSync.JobEditor.refreshPlaylistNames();
+  } catch (ignored) {
+    // Sheet repair must remain usable even when Spotify is temporarily unavailable.
+  }
   return true;
 }
 
 function spotiSyncInitializeSheetsFromMenu() {
   'use strict';
   SpotiSync.SheetStore.initialize();
+  try {
+    SpotiSync.JobEditor.refreshPlaylistNames();
+  } catch (ignored) {
+    // Friendly names are presentation-only; playlist IDs remain authoritative.
+  }
   SpreadsheetApp.getUi().alert(
     'Spoti Sync',
     'Dashboard, Jobs, Schedule, and Activity are ready. Existing Spotify credentials and job playlist IDs were kept.',
@@ -82,11 +93,29 @@ function spotiSyncDisconnect() {
 function spotiSyncAddJob() {
   'use strict';
   try {
-    SpotiSync.SheetStore.initialize();
-    SpotiSync.Ui.promptAddJob();
+    SpotiSync.JobEditor.showAdd();
   } catch (error) {
     SpreadsheetApp.getUi().alert('Could not add job', SpotiSync.Core.safeErrorMessage(error), SpreadsheetApp.getUi().ButtonSet.OK);
   }
+}
+
+function spotiSyncEditJob() {
+  'use strict';
+  try {
+    SpotiSync.JobEditor.showEdit();
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Could not edit job', SpotiSync.Core.safeErrorMessage(error), SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+function spotiSyncSaveJobEditor(payload) {
+  'use strict';
+  return SpotiSync.JobEditor.save(payload);
+}
+
+function spotiSyncRefreshJobEditorCatalog() {
+  'use strict';
+  return SpotiSync.JobEditor.refreshCatalog();
 }
 
 function spotiSyncPreviewEnabledJobs() {

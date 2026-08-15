@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.3.4';
+  ns.VERSION = '1.3.5';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
