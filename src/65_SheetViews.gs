@@ -77,11 +77,20 @@ var SpotiSync = SpotiSync || {};
     var width = ns.SheetStore.jobHeaders.length;
     var maxDataRows = Math.max(sheet.getMaxRows() - 1, 1);
     var validationRows = Math.min(maxDataRows, Math.max(sheet.getLastRow() + 49, 50));
+    var frequencyPresets = [
+      'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
+      'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
+    ];
     var checkbox = SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build();
     var source = SpreadsheetApp.newDataValidation()
       .requireValueInList(['Liked Songs', 'Playlist ↗'], true).setAllowInvalid(false).build();
     var behavior = SpreadsheetApp.newDataValidation()
       .requireValueInList(['Exact Mirror', 'Append Only'], true).setAllowInvalid(false).build();
+    var frequency = SpreadsheetApp.newDataValidation()
+      .requireValueInList(frequencyPresets, true)
+      .setAllowInvalid(true)
+      .setHelpText('Choose a common schedule, or type Every N days (1–3650), for example Every 21 days.')
+      .build();
 
     sheet.setHiddenGridlines(true);
     sheet.setFrozenRows(1);
@@ -96,7 +105,9 @@ var SpotiSync = SpotiSync || {};
     sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);
     sheet.getRange(2, columns.SOURCE, validationRows, 1).setDataValidation(source);
     sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);
-    sheet.getRange(1, columns.FREQUENCY).setNote('Use Daily or Every N days, for example Every 10 days.');
+    sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);
+    sheet.getRange(1, columns.FREQUENCY)
+      .setNote('Choose a preset from the dropdown, or type Every N days (1–3650), for example Every 21 days.');
 
     sheet.getRange(2, columns.HEALTH, maxDataRows, 2).setBackground(COLORS.LIGHT);
     sheet.setColumnWidth(columns.ENABLED, 74);
