@@ -298,27 +298,27 @@ function jobRow(overrides = {}) {
   assert(!/\beval\s*\(/.test(bundle));
 })();
 
+(function testOneCanonicalInstallerSourceManifest() {
+  const manifestPath = path.join(root, 'docs', 'source-files.json');
+  const sourceManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const sourceModules = fs.readdirSync(path.join(root, 'src'))
+    .filter((filename) => filename.endsWith('.gs'))
+    .sort();
+  const buildScript = fs.readFileSync(path.join(root, 'scripts', 'build.js'), 'utf8');
+  const siteScript = fs.readFileSync(path.join(root, 'docs', 'app.js'), 'utf8');
+
+  assert(sourceManifest.includes('92_JobEditor.gs'), 'Installer manifest must include the Job editor module.');
+  assert.deepStrictEqual([...sourceManifest].sort(), sourceModules, 'Installer manifest must contain every src/*.gs module exactly once.');
+  assert.strictEqual(new Set(sourceManifest).size, sourceManifest.length, 'Installer manifest must not contain duplicate modules.');
+  assert(buildScript.includes("path.join(root, 'docs', 'source-files.json')"));
+  assert(siteScript.includes("new URL('source-files.json', window.location.href)"));
+  assert(!buildScript.includes('const sourceFiles = ['), 'Node build must not maintain a second module list.');
+  assert(!siteScript.includes('const sourceFiles = ['), 'Browser installer must not maintain a second module list.');
+})();
+
 (function testPagesInstallerBuildsFromCommittedSource() {
   const siteScript = fs.readFileSync(path.join(root, 'docs', 'app.js'), 'utf8');
   const siteHtml = fs.readFileSync(path.join(root, 'docs', 'index.html'), 'utf8');
-  const expectedFiles = [
-    '00_Core.gs',
-    '10_Storage.gs',
-    '20_SpotifyAuth.gs',
-    '30_SpotifyApi.gs',
-    '40_Sources.gs',
-    '50_Strategies.gs',
-    '60_SheetStore.gs',
-    '65_SheetViews.gs',
-    '70_SyncEngine.gs',
-    '75_PlaylistHeartbeat.gs',
-    '80_Scheduler.gs',
-    '85_UpdateChecker.gs',
-    '90_Ui.gs',
-    '99_Entrypoints.gs'
-  ];
-
-  expectedFiles.forEach((filename) => assert(siteScript.includes(`'${filename}'`)));
   assert(siteScript.includes('raw.githubusercontent.com/11sid11/Spoti-sync/main/src/'));
   assert(siteHtml.includes('id="update"'));
   assert(siteHtml.includes('Schedule'));
