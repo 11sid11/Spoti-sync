@@ -11,10 +11,18 @@ var SpotiSync = SpotiSync || {};
     });
   }
 
-  function deleteSchedulerTriggers() {
-    schedulerTriggers().forEach(function (trigger) {
+  function deleteSchedulerTriggers(triggers) {
+    (triggers || schedulerTriggers()).forEach(function (trigger) {
       ScriptApp.deleteTrigger(trigger);
     });
+  }
+
+  function createSchedulerTrigger() {
+    return ScriptApp.newTrigger(HANDLER)
+      .timeBased()
+      .everyDays(1)
+      .atHour(ns.Constants.DEFAULT_SCHEDULER_HOUR)
+      .create();
   }
 
   function scheduleLabel(timezone) {
@@ -39,15 +47,52 @@ var SpotiSync = SpotiSync || {};
     }
   }
 
-  function refreshSchedulerViewsBestEffort() {
+  function refreshSummaryBestEffort() {
     try {
-      // Trigger changes only affect scheduler-facing status. Avoid reformatting
-      // Jobs and Activity when the user enables/disables the scheduler.
-      ns.SheetStore.refreshSchedule();
-      ns.SheetStore.refreshDashboard();
+      ns.SheetStore.refreshSummary();
     } catch (ignored) {
-      // Keep scheduler and authorization actions functional during partial setup.
+      // Trigger management must not depend on Sheet presentation.
     }
+  }
+
+  function automatedJobCount() {
+    return ns.SheetStore.getJobs().filter(function (job) { return job.enabled; }).length;
+  }
+
+  function reconcile(options) {
+    var settings = options || {};
+    var automated = automatedJobCount();
+    var triggers = schedulerTriggers();
+    var changed = false;
+
+    if (!automated) {
+      if (triggers.length) {
+        deleteSchedulerTriggers(triggers);
+        changed = true;
+      }
+      if (settings.refresh !== false) { refreshSummaryBestEffort(); }
+      return {
+        enabled: false,
+        triggerCount: 0,
+        automatedJobs: 0,
+        changed: changed
+      };
+    }
+
+    if (triggers.length !== 1) {
+      deleteSchedulerTriggers(triggers);
+      createSchedulerTrigger();
+      changed = true;
+      triggers = schedulerTriggers();
+    }
+
+    if (settings.refresh !== false) { refreshSummaryBestEffort(); }
+    return {
+      enabled: true,
+      triggerCount: triggers.length || 1,
+      automatedJobs: automated,
+      changed: changed
+    };
   }
 
   ns.Scheduler = {
@@ -71,22 +116,17 @@ var SpotiSync = SpotiSync || {};
       };
     },
 
+    reconcile: reconcile,
+
+    // Compatibility helpers for old installed callbacks. Normal v1.4 UX never
+    // exposes manual scheduler controls.
     enable: function () {
-      // Idempotent: enabling always replaces every existing Spoti Sync trigger
-      // with exactly one daily trigger.
-      deleteSchedulerTriggers();
-      ScriptApp.newTrigger(HANDLER)
-        .timeBased()
-        .everyDays(1)
-        .atHour(ns.Constants.DEFAULT_SCHEDULER_HOUR)
-        .create();
-      refreshSchedulerViewsBestEffort();
-      return true;
+      return reconcile();
     },
 
     disable: function () {
       deleteSchedulerTriggers();
-      refreshSchedulerViewsBestEffort();
+      refreshSummaryBestEffort();
       return true;
     },
 
@@ -95,17 +135,18 @@ var SpotiSync = SpotiSync || {};
         var result = ns.SyncEngine.runDue();
         recordSchedulerCheck(result.status || 'Success', null);
         checkForUpdatesBestEffort();
-        refreshSchedulerViewsBestEffort();
+        refreshSummaryBestEffort();
         return result;
       } catch (error) {
         recordSchedulerCheck('Error', error);
         checkForUpdatesBestEffort();
-        refreshSchedulerViewsBestEffort();
+        refreshSummaryBestEffort();
         throw error;
       }
     },
 
-    refreshViews: refreshSchedulerViewsBestEffort,
-    _scheduleLabel: scheduleLabel
+    _schedulerTriggers: schedulerTriggers,
+    _scheduleLabel: scheduleLabel,
+    _reconcile: reconcile
   };
 })(SpotiSync);
