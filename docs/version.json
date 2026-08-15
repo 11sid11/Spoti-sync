@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "channel": "stable",
-  "released_at": "2026-08-15",
+  "released_at": "2026-08-16",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Moves normal Spoti Sync configuration and operation into one sidebar app while Google Sheets becomes status and Activity output.",
-    "Replaces manual scheduler controls with per-job Off, Daily, or Every N days automation and automatic one-trigger reconciliation.",
-    "Adds per-job playlist-description status control, manual Sync now for Automation Off jobs, and a safe v1.3.8 migration that preserves IDs, OAuth state, and Activity history."
+    "Fixes the blank v1.4 sidebar caused by a browser-global top identifier collision in generated client JavaScript.",
+    "Adds a visible loading state and compact runtime boot-error fallback so sidebar failures are no longer silent.",
+    "Adds regression coverage that parses the generated production sidebar script and guards against redeclaring the browser top global."
   ]
 }
