@@ -25,39 +25,25 @@ function spotiSyncSetup() {
   SpotiSync.Ui.showSetup();
 }
 
-function spotiSyncPrepareJobsForRepair_() {
+function spotiSyncInitializeSheetsCore_() {
   'use strict';
-  try {
-    if (SpotiSync.JobEditor && SpotiSync.JobEditor.applyFriendlyPlaylistLinks) {
-      SpotiSync.JobEditor.applyFriendlyPlaylistLinks();
-    }
-  } catch (ignored) {
-    // Legacy layouts may require SheetStore migration before the Job editor can
-    // render them. In that case Initialize / Repair Sheets remains authoritative.
-  }
-}
-
-function spotiSyncInitializeSheets() {
-  'use strict';
-  spotiSyncPrepareJobsForRepair_();
-  SpotiSync.SheetStore.initialize();
-  try {
-    SpotiSync.JobEditor.refreshPlaylistNames();
-  } catch (ignored) {
-    // Sheet repair must remain usable even when Spotify is temporarily unavailable.
-  }
-  return true;
-}
-
-function spotiSyncInitializeSheetsFromMenu() {
-  'use strict';
-  spotiSyncPrepareJobsForRepair_();
   SpotiSync.SheetStore.initialize();
   try {
     SpotiSync.JobEditor.refreshPlaylistNames();
   } catch (ignored) {
     // Friendly names are presentation-only; playlist IDs remain authoritative.
   }
+  return true;
+}
+
+function spotiSyncInitializeSheets() {
+  'use strict';
+  return spotiSyncInitializeSheetsCore_();
+}
+
+function spotiSyncInitializeSheetsFromMenu() {
+  'use strict';
+  spotiSyncInitializeSheetsCore_();
   SpreadsheetApp.getUi().alert(
     'Spoti Sync',
     'Dashboard, Jobs, Schedule, and Activity are ready. Existing Spotify credentials and job playlist IDs were kept.',
