@@ -8,10 +8,7 @@ var SpotiSync = SpotiSync || {};
   var NAME_PROPERTY_PREFIX = 'PLAYLIST_NAME_';
   var FRIENDLY_SOURCE_PREFIX = 'Playlist · ';
   var PLAYLIST_LINK_SUFFIX = ' ↗';
-  var FREQUENCY_PRESETS = [
-    'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
-    'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
-  ];
+  var CUSTOM_FREQUENCY_VALUE = '__CUSTOM__';
 
   function normalizePlaylist(playlist) {
     var owner = playlist && playlist.owner ? playlist.owner : {};
@@ -30,7 +27,7 @@ var SpotiSync = SpotiSync || {};
   }
 
   function getAllPlaylistPages() {
-    var next = '/me/playlists?limit=50&offset=0';
+    var next = '/me/playlists?limit=' + ns.Constants.PAGE_SIZE + '&offset=0';
     var playlists = [];
     while (next) {
       var page = ns.SpotifyApi.request('get', next);
@@ -157,26 +154,15 @@ var SpotiSync = SpotiSync || {};
     return builder.build();
   }
 
-  function isConfiguredJobRow(row, columns) {
-    var hasIdentity = ns.Core.trim(row[columns.ID - 1]) ||
-      ns.Core.trim(row[columns.NAME - 1]) ||
-      ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]) ||
-      ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
-    var hasSchedule = ns.Core.trim(row[columns.BEHAVIOR - 1]) &&
-      ns.Core.trim(row[columns.FREQUENCY - 1]);
-    return Boolean(hasIdentity || hasSchedule);
-  }
-
   function presentationForRow(row, columns) {
     var sourceId;
     var targetId;
     var sourceName;
     var targetName;
 
-    // Source/Target are presentation fields. A v1.3.5 empty row may already
-    // contain the accidental "Liked Songs" label, so never use Source text to
-    // decide whether the row is a configured job.
-    if (!isConfiguredJobRow(row, columns)) {
+    // Source/Target are presentation fields. Never use their visible text to
+    // decide whether a row is configured; SheetStore owns that classification.
+    if (!ns.SheetStore.isConfiguredJobRow(row)) {
       return { sourceText: '', sourceUrl: '', targetText: '', targetUrl: '' };
     }
 
@@ -212,8 +198,6 @@ var SpotiSync = SpotiSync || {};
     sheet.getRange(1, columns.SOURCE).setNote(
       'Use Spoti Sync → Add Job or Edit Selected Job to choose Liked Songs or a Spotify playlist.'
     );
-    sheet.setColumnWidth(columns.SOURCE, 205);
-    sheet.setColumnWidth(columns.TARGET, 205);
 
     if (lastRow < 2) { return; }
     rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
@@ -264,6 +248,22 @@ var SpotiSync = SpotiSync || {};
     applyFriendlyPlaylistLinks();
   }
 
+  function frequencyEditorState(frequency, intervalDays, presets) {
+    var options = presets || ns.SheetStore.frequencyPresets();
+    var label = ns.Core.trim(frequency);
+    return {
+      selection: options.indexOf(label) !== -1 ? label : CUSTOM_FREQUENCY_VALUE,
+      customDays: Number(intervalDays || 1)
+    };
+  }
+
+  function frequencyRequestLabel(selection, customDays) {
+    if (ns.Core.trim(selection) === CUSTOM_FREQUENCY_VALUE) {
+      return ns.SheetStore._frequencyLabel(Number(customDays));
+    }
+    return ns.Core.trim(selection);
+  }
+
   function currentConfigForRow(rowNumber) {
     var sheet = ns.SheetStore._ensureJobsSheet();
     var columns = ns.SheetStore._jobColumns;
@@ -288,7 +288,8 @@ var SpotiSync = SpotiSync || {};
       targetPlaylistId: targetId,
       targetName: resolveKnownName(targetId, row[columns.TARGET - 1]),
       behavior: ns.SheetStore._behaviorLabel(strategy),
-      frequency: ns.SheetStore._frequencyLabel(intervalDays)
+      frequency: ns.SheetStore._frequencyLabel(intervalDays),
+      intervalDays: intervalDays
     };
   }
 
@@ -314,8 +315,9 @@ var SpotiSync = SpotiSync || {};
       sourceName: '',
       targetPlaylistId: '',
       targetName: '',
-      behavior: 'Exact Mirror',
-      frequency: 'Daily'
+      behavior: ns.SheetStore._behaviorLabel(ns.Constants.STRATEGIES.MIRROR),
+      frequency: ns.SheetStore._frequencyLabel(1),
+      intervalDays: 1
     };
   }
 
@@ -328,6 +330,13 @@ var SpotiSync = SpotiSync || {};
 
   function editorHtml(model) {
     var data = jsonForHtml(model);
+    var behaviorOptions = model.behaviorOptions.map(function (item) {
+      return '<option value="' + ns.Core.escapeHtml(item) + '">' + ns.Core.escapeHtml(item) + '</option>';
+    }).join('');
+    var frequencyOptions = model.frequencyPresets.map(function (item) {
+      return '<option value="' + ns.Core.escapeHtml(item) + '">' + ns.Core.escapeHtml(item) + '</option>';
+    }).join('') + '<option value="' + CUSTOM_FREQUENCY_VALUE + '">Custom interval…</option>';
+
     return '<!doctype html><html><head><base target="_blank"><style>' +
       'body{font-family:Arial,sans-serif;color:#202124;margin:0;padding:16px;line-height:1.4}' +
       'h2{margin:0 0 4px}.muted{font-size:12px;color:#5f6368}.section{margin-top:18px}' +
@@ -335,6 +344,7 @@ var SpotiSync = SpotiSync || {};
       'input,select{box-sizing:border-box;width:100%;padding:8px;border:1px solid #bdc1c6;border-radius:4px;background:#fff}' +
       'select[size]{padding:2px}.row{display:flex;gap:8px}.row>*{flex:1}.hidden{display:none}' +
       '.check{display:flex;align-items:center;gap:8px;margin-top:10px}.check input{width:auto}' +
+      '.frequency-custom{display:flex;align-items:center;gap:6px;margin-top:6px}.frequency-custom input{width:86px}' +
       'button{border:0;border-radius:4px;padding:9px 12px;background:#202124;color:#fff;cursor:pointer}' +
       'button.secondary{background:#f1f3f4;color:#202124}.actions{display:flex;gap:8px;margin-top:20px}' +
       '#message{font-size:12px;margin-top:10px;white-space:pre-wrap}.ok{color:#137333}.bad{color:#b3261e}' +
@@ -355,13 +365,14 @@ var SpotiSync = SpotiSync || {};
       '<label for="targetManual">Not listed? Paste Spotify playlist link or ID</label><input id="targetManual" placeholder="https://open.spotify.com/playlist/…"></div>' +
       '<div id="targetCreate" class="hidden"><label for="newTargetName">New playlist name</label><input id="newTargetName" maxlength="120">' +
       '<label class="check"><input type="checkbox" id="targetPublic"> Public playlist</label></div></div>' +
-      '<div class="section row"><div><label for="behavior">Behavior</label><select id="behavior"><option>Exact Mirror</option><option>Append Only</option></select></div>' +
-      '<div><label for="frequency">Frequency</label><input id="frequency" list="frequencyPresets"><datalist id="frequencyPresets">' +
-      FREQUENCY_PRESETS.map(function (item) { return '<option value="' + ns.Core.escapeHtml(item) + '"></option>'; }).join('') +
-      '</datalist></div></div>' +
+      '<div class="section row"><div><label for="behavior">Behavior</label><select id="behavior">' + behaviorOptions + '</select></div>' +
+      '<div><label for="frequencyPreset">Frequency</label><select id="frequencyPreset">' + frequencyOptions + '</select>' +
+      '<div id="customFrequencySection" class="hidden"><div class="frequency-custom"><span>Every</span>' +
+      '<input id="customFrequencyDays" type="number" min="' + model.frequencyLimits.min + '" max="' + model.frequencyLimits.max + '" step="1">' +
+      '<span>days</span></div></div></div></div>' +
       '<div class="actions"><button id="saveButton" onclick="saveJob()">Save Job</button>' +
       '<button class="secondary" onclick="refreshCatalog()">Refresh playlists</button></div><div id="message"></div>' +
-      '<script>var MODEL=' + data + ';var catalog=MODEL.catalog||[];var sourceSelected=MODEL.config.sourcePlaylistId||"";var targetSelected=MODEL.config.targetPlaylistId||"";' +
+      '<script>var MODEL=' + data + ';var catalog=MODEL.catalog||[];var sourceSelected=MODEL.config.sourcePlaylistId||"";var targetSelected=MODEL.config.targetPlaylistId||"";var CUSTOM_FREQUENCY="' + CUSTOM_FREQUENCY_VALUE + '";' +
       'function el(id){return document.getElementById(id);}function msg(text,bad){var m=el("message");m.textContent=text||"";m.className=bad?"bad":"ok";}' +
       'function label(p){var bits=[p.name];if(p.itemCount){bits.push(p.itemCount+" tracks");}if(p.owner){bits.push(p.owner);}return bits.join(" · ");}' +
       'function render(which){var search=el(which+"Search").value.toLowerCase();var select=el(which+"Playlist");var selected=which==="source"?sourceSelected:targetSelected;select.innerHTML="";' +
@@ -369,10 +380,11 @@ var SpotiSync = SpotiSync || {};
       'if(selected&&!shown.some(function(p){return p.id===selected;})){var current=catalog.find(function(p){return p.id===selected;});if(current){shown.unshift(current);}}' +
       'shown.forEach(function(p){var o=document.createElement("option");o.value=p.id;o.textContent=label(p);if(p.id===selected){o.selected=true;}select.appendChild(o);});}' +
       'function toggle(){var playlist=el("sourceType").value==="PLAYLIST";el("sourcePlaylistSection").className=playlist?"":"hidden";var create=el("targetMode").value==="create";el("targetExisting").className=create?"hidden":"";el("targetCreate").className=create?"":"hidden";}' +
-      'function init(){var c=MODEL.config;el("jobName").value=c.name||"";el("enabled").checked=c.enabled!==false;el("sourceType").value=c.sourceType||"LIKED_SONGS";el("behavior").value=c.behavior||"Exact Mirror";el("frequency").value=c.frequency||"Daily";render("source");render("target");toggle();}' +
+      'function toggleFrequency(){el("customFrequencySection").className=el("frequencyPreset").value===CUSTOM_FREQUENCY?"":"hidden";}' +
+      'function init(){var c=MODEL.config;el("jobName").value=c.name||"";el("enabled").checked=c.enabled!==false;el("sourceType").value=c.sourceType||"LIKED_SONGS";el("behavior").value=c.behavior;el("frequencyPreset").value=c.frequencySelection;el("customFrequencyDays").value=c.customFrequencyDays;render("source");render("target");toggle();toggleFrequency();}' +
       'el("sourceSearch").addEventListener("input",function(){render("source");});el("targetSearch").addEventListener("input",function(){render("target");});' +
-      'el("sourcePlaylist").addEventListener("change",function(){sourceSelected=this.value;});el("targetPlaylist").addEventListener("change",function(){targetSelected=this.value;});el("sourceType").addEventListener("change",toggle);el("targetMode").addEventListener("change",toggle);' +
-      'function saveJob(){var button=el("saveButton");button.disabled=true;msg("Saving…",false);var payload={mode:MODEL.mode,jobId:MODEL.config.jobId||"",name:el("jobName").value,enabled:el("enabled").checked,sourceType:el("sourceType").value,sourcePlaylistId:sourceSelected,sourceManual:el("sourceManual").value,targetMode:el("targetMode").value,targetPlaylistId:targetSelected,targetManual:el("targetManual").value,newTargetName:el("newTargetName").value,targetPublic:el("targetPublic").checked,behavior:el("behavior").value,frequency:el("frequency").value};' +
+      'el("sourcePlaylist").addEventListener("change",function(){sourceSelected=this.value;});el("targetPlaylist").addEventListener("change",function(){targetSelected=this.value;});el("sourceType").addEventListener("change",toggle);el("targetMode").addEventListener("change",toggle);el("frequencyPreset").addEventListener("change",toggleFrequency);' +
+      'function saveJob(){var button=el("saveButton");button.disabled=true;msg("Saving…",false);var payload={mode:MODEL.mode,jobId:MODEL.config.jobId||"",name:el("jobName").value,enabled:el("enabled").checked,sourceType:el("sourceType").value,sourcePlaylistId:sourceSelected,sourceManual:el("sourceManual").value,targetMode:el("targetMode").value,targetPlaylistId:targetSelected,targetManual:el("targetManual").value,newTargetName:el("newTargetName").value,targetPublic:el("targetPublic").checked,behavior:el("behavior").value,frequencySelection:el("frequencyPreset").value,customFrequencyDays:el("customFrequencyDays").value};' +
       'google.script.run.withSuccessHandler(function(r){msg((r&&r.message)||"Job saved.",false);setTimeout(function(){google.script.host.close();},500);}).withFailureHandler(function(e){button.disabled=false;msg(e&&e.message?e.message:String(e),true);}).spotiSyncSaveJobEditor(payload);}' +
       'function refreshCatalog(){msg("Refreshing playlists…",false);google.script.run.withSuccessHandler(function(list){catalog=list||[];render("source");render("target");msg("Playlist list refreshed.",false);}).withFailureHandler(function(e){msg(e&&e.message?e.message:String(e),true);}).spotiSyncRefreshJobEditorCatalog();}' +
       'init();</script></body></html>';
@@ -384,7 +396,12 @@ var SpotiSync = SpotiSync || {};
     var catalog = getCatalog(false);
     rememberConfiguredNames(catalog);
     var config = mode === 'edit' ? selectedJobConfig() : defaultConfig();
+    var frequencyPresets = ns.SheetStore.frequencyPresets();
+    var frequencyState = frequencyEditorState(config.frequency, config.intervalDays, frequencyPresets);
     var editorCatalog = catalog.slice();
+
+    config.frequencySelection = frequencyState.selection;
+    config.customFrequencyDays = frequencyState.customDays;
 
     [
       { id: config.sourcePlaylistId, name: config.sourceName },
@@ -403,8 +420,14 @@ var SpotiSync = SpotiSync || {};
       }
     });
 
-    var html = HtmlService.createHtmlOutput(editorHtml({ mode: mode, config: config, catalog: editorCatalog }))
-      .setTitle(mode === 'edit' ? 'Edit Spoti Sync Job' : 'Add Spoti Sync Job');
+    var html = HtmlService.createHtmlOutput(editorHtml({
+      mode: mode,
+      config: config,
+      catalog: editorCatalog,
+      behaviorOptions: ns.SheetStore.behaviorOptions(),
+      frequencyPresets: frequencyPresets,
+      frequencyLimits: ns.SheetStore.frequencyLimits()
+    })).setTitle(mode === 'edit' ? 'Edit Spoti Sync Job' : 'Add Spoti Sync Job');
     SpreadsheetApp.getUi().showSidebar(html);
   }
 
@@ -428,15 +451,11 @@ var SpotiSync = SpotiSync || {};
     return 0;
   }
 
-  function newJobId() {
-    return 'job_' + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
-  }
-
   function writeConfiguration(payload, sourcePlaylist, targetPlaylist, strategy, intervalDays) {
     var sheet = ns.SheetStore._ensureJobsSheet();
     var columns = ns.SheetStore._jobColumns;
     var rowNumber = payload.mode === 'edit' ? findRowByJobId(ns.Core.trim(payload.jobId)) : 0;
-    var jobId = ns.Core.trim(payload.jobId) || newJobId();
+    var jobId = ns.Core.trim(payload.jobId) || ns.SheetStore.createJobId();
     var sourceId = sourcePlaylist ? sourcePlaylist.id : '';
     var sourceText = sourcePlaylist ? sourceDisplay(sourcePlaylist.name) : 'Liked Songs';
     var targetText = targetDisplay(targetPlaylist.name);
@@ -481,13 +500,15 @@ var SpotiSync = SpotiSync || {};
     var targetPlaylist;
     var strategy;
     var intervalDays;
+    var requestedFrequency;
     var written;
 
     ns.Core.assert(data.mode === 'add' || data.mode === 'edit', 'Invalid job editor mode.');
     ns.Core.assert([ns.Constants.SOURCE_TYPES.LIKED_SONGS, ns.Constants.SOURCE_TYPES.PLAYLIST].indexOf(sourceType) !== -1,
       'Choose Liked Songs or a Spotify playlist as the source.');
     strategy = ns.SheetStore._parseBehaviorLabel(data.behavior);
-    intervalDays = ns.SheetStore._parseFrequency(data.frequency);
+    requestedFrequency = frequencyRequestLabel(data.frequencySelection, data.customFrequencyDays);
+    intervalDays = ns.SheetStore._parseFrequency(requestedFrequency);
     catalog = getCatalog(false);
 
     if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
@@ -542,32 +563,9 @@ var SpotiSync = SpotiSync || {};
     _sourceDisplay: sourceDisplay,
     _targetDisplay: targetDisplay,
     _stripFriendlyLabel: stripFriendlyLabel,
-    _isConfiguredJobRow: isConfiguredJobRow,
     _presentationForRow: presentationForRow,
+    _frequencyEditorState: frequencyEditorState,
+    _frequencyRequestLabel: frequencyRequestLabel,
     _writeConfiguration: writeConfiguration
   };
-
-  // Keep the stable v1.3.3/v1.3.4 SheetViews implementation, then add the
-  // presentation-only friendly playlist labels without extra Spotify calls.
-  if (ns.SheetViews) {
-    (function () {
-      var originalRefreshJobsStatus = ns.SheetViews.refreshJobsStatus;
-      var originalRefreshAll = ns.SheetViews.refreshAll;
-      ns.SheetViews.refreshJobsStatus = function () {
-        originalRefreshJobsStatus();
-        applyFriendlyPlaylistLinks();
-      };
-      ns.SheetViews.refreshAll = function () {
-        originalRefreshAll();
-        applyFriendlyPlaylistLinks();
-      };
-    })();
-  }
-
-  // Preserve any callers of the old prompt entry while routing them to the
-  // new editor. The multi-prompt implementation remains inert and can be
-  // deleted in a later source-only cleanup without changing behavior.
-  if (ns.Ui) {
-    ns.Ui.promptAddJob = function () { ns.JobEditor.showAdd(); };
-  }
 })(SpotiSync);
