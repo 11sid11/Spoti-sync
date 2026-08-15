@@ -40,6 +40,8 @@ Spoti Sync 1.3 uses four operational sheets:
 - **Schedule** — scheduler status, cloud runtime, trigger count, daily execution window, last background check, and upcoming eligible jobs.
 - **Activity** — bounded execution history with result, additions/removals, duration, warnings, and errors.
 
+`Frequency` uses a guided dropdown for common schedules such as Daily, 7 days, 14 days, 30 days, and 90 days. The dropdown is intentionally not exhaustive: any valid custom interval can still be typed as `Every N days`, from 1 to 3650 days (for example, `Every 21 days`).
+
 `Initialize / Repair Sheets` migrates the pre-1.3 Jobs/History layout into this structure. Existing Spotify Client ID, OAuth tokens, configured playlist IDs, and scheduler trigger remain in the same installation.
 
 ## Playlist heartbeat
