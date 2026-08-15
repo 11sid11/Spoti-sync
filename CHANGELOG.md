@@ -2,6 +2,29 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.7 — 2026-08-15
+
+### Fixed
+
+- Removed the obsolete Jobs **Source** dropdown from `SheetViews`, eliminating the refresh/repair flash where `Liked Songs / Playlist ↗` briefly appeared before the Job editor presentation layer cleared it.
+- Removed the old generic `Playlist ↗` / `Open playlist ↗` renderer from `SheetViews`; friendly Source/Target names now have one presentation owner in `JobEditor`.
+- Source and Target remain display-only in Jobs and are configured through **Spoti Sync → Add Job…** / **Edit Selected Job…**. Enabled checkbox, Behavior dropdown, and Frequency dropdown remain unchanged.
+
+### Safety
+
+- The existing broad validation cleanup through Frequency remains in place so stale legacy Source/Strategy validation is still removed during repair.
+- No scheduler behavior, Spotify API calls, OAuth state, playlist IDs, sync logic, heartbeat state, migration semantics, or Jobs dataset rewrites were changed.
+- The hotfix does not add `clearFormats()` or new scheduled executions.
+
+### Tests
+
+- Added regression guards proving `SheetViews` cannot recreate Source validation or generic Source/Target playlist labels while Enabled, Behavior, and Frequency validations remain present.
+- Preserved the v1.3.3 checkbox-row, v1.3.4 Frequency, v1.3.5 Job editor, and v1.3.6 empty-row cleanup coverage.
+
+### Upgrade note
+
+- Install the 1.3.7 bundle in the same Apps Script project, reload the Sheet, then run **Spoti Sync → Initialize / Repair Sheets** once. Existing Spotify Client ID, OAuth tokens, playlist IDs, scheduler state, heartbeat state, and real job data are preserved.
+
 ## 1.3.6 — 2026-08-15
 
 ### Fixed
@@ -176,7 +199,7 @@ All notable changes to Spoti Sync are documented here.
 ### Added
 
 - Scheduler status panel in columns O:P of the Jobs sheet.
-- Visible scheduler trigger count, cloud runtime, daily execution window, last background check, last check result, and next due job.
+- Visible scheduler trigger count, cloud runtime, daily execution window, last background check, last background check result, and next due job.
 - Dedicated scheduler telemetry so background checks are distinguishable from manual syncs.
 
 ## 1.0.0 — 2026-08-14
