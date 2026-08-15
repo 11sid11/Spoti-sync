@@ -98,13 +98,19 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert.strictEqual(repaired.rows[0][10], '1234567890AB');
 })();
 
-(function testCheckboxOnlyFutureRowsAreBlankAndDoNotTriggerRepair() {
+(function testCheckboxAndPresentationOnlyFutureRowsAreNotJobs() {
   const realJob = [
     true, 'Shareable Likes', 'Liked Songs', 'Open playlist ↗', 'Exact Mirror', 'Daily',
     '✓ Healthy', '2026-08-16', 'job_keep', '', '1234567890AB', '', '', 'Success', 0, 0, ''
   ];
   const checkboxOnly = [false, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
-  const rows = [realJob].concat(Array.from({ length: 49 }, () => checkboxOnly.slice()));
+  const pollutedPresentationOnly = [false, '', 'Liked Songs', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+  const rows = [realJob]
+    .concat(Array.from({ length: 24 }, () => checkboxOnly.slice()))
+    .concat(Array.from({ length: 25 }, () => pollutedPresentationOnly.slice()));
+
+  assert.strictEqual(SheetStore.isConfiguredJobRow(realJob), true);
+  rows.slice(1).forEach((row) => assert.strictEqual(SheetStore.isConfiguredJobRow(row), false));
 
   const repaired = SheetStore._repairCurrentJobRows(rows);
   assert.strictEqual(repaired.changed, false);
@@ -119,40 +125,55 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert.strictEqual(parsed.jobs[0].targetPlaylist, '1234567890AB');
 })();
 
-(function testFrequencyDropdownOffersPresetsWithoutBlockingCustomSchedules() {
+(function testCanonicalFrequencyAndBehaviorConfiguration() {
   const expectedPresets = [
     'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
     'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
   ];
 
+  assert.deepStrictEqual(Array.from(SheetStore.frequencyPresets()), expectedPresets);
+  assert.deepStrictEqual(SheetStore.frequencyLimits(), { min: 1, max: 3650 });
+  assert.deepStrictEqual(Array.from(SheetStore.behaviorOptions()), ['Exact Mirror', 'Append Only']);
+
+  assert.strictEqual(SheetStore._parseFrequency('Daily'), 1);
+  assert.strictEqual(SheetStore._parseFrequency('Every 10 days'), 10);
+  assert.strictEqual(SheetStore._parseFrequency('Every 21 days'), 21);
+  assert.throws(() => SheetStore._parseFrequency('Every 0 days'), /1 to 3650/);
+  assert.throws(() => SheetStore._parseFrequency('Every 3651 days'), /1 to 3650/);
+
+  assert.strictEqual(SheetStore._parseBehaviorLabel('Exact Mirror'), 'MIRROR');
+  assert.strictEqual(SheetStore._parseBehaviorLabel('Append Only'), 'APPEND');
+})();
+
+(function testSheetViewsConsumesCanonicalConfiguration() {
   assert(
-    sheetViews.includes('sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();'),
-    'Jobs styling must clear all legacy validation through the Frequency column first.'
+    sheetViews.includes('var behaviorOptions = ns.SheetStore.behaviorOptions();'),
+    'SheetViews must consume canonical Behavior options.'
   );
   assert(
-    sheetViews.includes('sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);'),
-    'Behavior validation must remain scoped to the Behavior column.'
+    sheetViews.includes('var frequencyPresets = ns.SheetStore.frequencyPresets();'),
+    'SheetViews must consume canonical Frequency presets.'
   );
   assert(
-    sheetViews.includes('sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);'),
-    'Frequency must receive its own guided validation.'
+    sheetViews.includes('var frequencyLimits = ns.SheetStore.frequencyLimits();'),
+    'SheetViews must consume canonical Frequency limits.'
+  );
+  assert(
+    !sheetViews.includes("var frequencyPresets = ["),
+    'SheetViews must not define a second Frequency preset list.'
+  );
+  assert(
+    !sheetViews.includes("requireValueInList(['Exact Mirror', 'Append Only']"),
+    'SheetViews must not define a second Behavior option list.'
   );
   assert(
     sheetViews.includes('.requireValueInList(frequencyPresets, true)'),
-    'Frequency validation must expose a dropdown.'
+    'Frequency validation must expose canonical presets.'
   );
   assert(
     sheetViews.includes('.setAllowInvalid(true)'),
-    'Frequency validation must allow valid custom Every N days values outside the preset list.'
+    'Frequency validation must continue allowing custom Every N days schedules.'
   );
-  assert(
-    sheetViews.includes("setHelpText('Choose a common schedule, or type Every N days (1–3650), for example Every 21 days.')"),
-    'Frequency validation must explain how to enter custom schedules.'
-  );
-  expectedPresets.forEach((preset) => {
-    assert(sheetViews.includes(`'${preset}'`), `Missing Frequency preset: ${preset}`);
-  });
-  assert(!sheetViews.includes("'MIRROR', 'APPEND'"), 'Legacy strategy values must not be offered as Frequency choices.');
 })();
 
 (function testSourceColumnIsPresentationOnly() {
@@ -178,23 +199,37 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   );
   assert(
     !sheetViews.includes('function applyPlaylistLinks(sheet)'),
-    'Friendly Source/Target presentation must have a single owner in JobEditor.'
-  );
-  assert(
-    !sheetViews.includes("setText('Playlist ↗')") && !sheetViews.includes("setText('Open playlist ↗')"),
-    'SheetViews must not reintroduce generic playlist presentation labels.'
+    'Friendly Source/Target presentation must remain owned by JobEditor.'
   );
 })();
 
-(function testCustomNonPresetFrequencyStillParses() {
-  const row = [
-    true, 'Custom cadence', 'Liked Songs', 'Open playlist ↗', 'Exact Mirror', 'Every 21 days',
-    '', '', 'job_custom', '', '1234567890AB', '', '', '', 0, 0, ''
+(function testRuntimeSourceIdentityUsesHiddenPlaylistId() {
+  const playlistRow = [
+    true, 'Playlist mirror', 'Completely arbitrary presentation', 'Target presentation',
+    'Exact Mirror', 'Daily', '', '', 'job_playlist', '1234567890AB', 'ABCDEFGHIJKL', '', '', '', 0, 0, ''
   ];
-  const parsed = SheetStore._parseJobRows([row], 2);
+  const likedRow = [
+    true, 'Liked mirror', 'Also arbitrary presentation', 'Target presentation',
+    'Exact Mirror', 'Daily', '', '', 'job_liked', '', 'ABCDEFGHIJKL', '', '', '', 0, 0, ''
+  ];
+  const parsed = SheetStore._parseJobRows([playlistRow, likedRow], 2);
   assert.strictEqual(parsed.errors.length, 0);
-  assert.strictEqual(parsed.jobs.length, 1);
-  assert.strictEqual(parsed.jobs[0].intervalDays, 21);
+  assert.strictEqual(parsed.jobs.length, 2);
+  assert.strictEqual(parsed.jobs[0].sourceType, 'PLAYLIST');
+  assert.strictEqual(parsed.jobs[0].sourcePlaylist, '1234567890AB');
+  assert.strictEqual(parsed.jobs[1].sourceType, 'LIKED_SONGS');
+  assert.strictEqual(parsed.jobs[1].sourcePlaylist, '');
+})();
+
+(function testLegacySourceLabelsRemainMigrationOnlyCompatibility() {
+  const migrated = SheetStore._legacyJobToStoredRow([
+    true, 'Legacy', 'LIKED_SONGS', '', '1234567890AB', 'MIRROR', 1,
+    '', '', '', 0, 0, ''
+  ]);
+  assert.strictEqual(migrated[2], 'Liked Songs');
+  assert.strictEqual(migrated[4], 'Exact Mirror');
+  assert.strictEqual(migrated[5], 'Daily');
+  assert.strictEqual(migrated[10], '1234567890AB');
 })();
 
 (function testJobsMigrationIsExplicitBoundedAndNonDestructiveToFormatting() {
@@ -236,4 +271,4 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert(sheetStoreSource.includes('refreshRunViews();'));
 })();
 
-console.log('Sheet repair, validation ownership, Frequency UX, and scheduler performance checks passed.');
+console.log('Sheet repair, configuration ownership, Frequency UX, and scheduler performance checks passed.');
