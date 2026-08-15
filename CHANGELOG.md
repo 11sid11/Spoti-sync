@@ -2,6 +2,25 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.3 — 2026-08-15
+
+### Fixed
+
+- Checkbox-only future rows now count as empty Jobs rows. An unchecked validation cell with no job definition in columns B:F is no longer parsed as a disabled job or treated as migration debris.
+- Normal sync reads and result writes no longer run current-layout Jobs migration/repair. Destructive migration work is restricted to the explicit **Spoti Sync → Initialize / Repair Sheets** path.
+- Jobs/Activity dataset replacement no longer calls whole-sheet `clearFormats()`, so a repair cannot strip the styled Jobs presentation before the final render completes.
+- Migration clearing is bounded to the used rows and Spoti Sync-owned columns instead of using the sheet-wide maximum row/column grid.
+- Legacy job migration filters checkbox-only rows by actual job-definition fields, preserving real source/target playlist IDs without compacting hundreds of false-only rows into phantom jobs.
+
+### Tests
+
+- Added regression coverage for one real job followed by 49 checkbox-validation `FALSE` rows, verifying that exactly one job is parsed and no repair rewrite is requested.
+- Added guards ensuring current-layout repair is explicit-only, migration is bounded, and whole-sheet formatting clears cannot return.
+
+### Upgrade note
+
+- Install the 1.3.3 bundle in the same Apps Script project and run **Spoti Sync → Initialize / Repair Sheets** once. Existing Spotify Client ID, OAuth tokens, playlist IDs, scheduler state, and job configuration remain in the same installation.
+
 ## 1.3.2 — 2026-08-15
 
 ### Fixed
