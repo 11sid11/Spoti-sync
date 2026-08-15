@@ -44,6 +44,7 @@ context.SpotiSync.UpdateChecker = {
   statusLabel() { return 'Not checked'; }
 };
 load('92_JobEditor.gs');
+load('90_Ui.gs');
 
 const { JobEditor, SheetStore } = context.SpotiSync;
 const editorSource = fs.readFileSync(path.join(root, 'src', '92_JobEditor.gs'), 'utf8');
@@ -148,6 +149,35 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(!uiSource.includes('Spoti Sync Setup'));
 })();
 
+(function testGeneratedSidebarBootIsBrowserSafe() {
+  const html = context.SpotiSync.Ui._appHtml({
+    version: '1.4.1',
+    connected: true,
+    clientIdHint: '',
+    redirectUri: '',
+    spotifyDashboardUrl: '',
+    projectUrl: '',
+    automation: { enabled: false, automatedJobs: 0 },
+    jobs: []
+  });
+  const match = html.match(/<script>([\s\S]*?)<\/script>/);
+
+  assert(html.includes('Loading Spoti Sync…'), 'Static sidebar boot content must exist before JavaScript runs.');
+  assert(match, 'Production appHtml must emit a client script.');
+
+  const clientScript = match[1];
+  assert.doesNotThrow(() => new vm.Script(clientScript), 'Generated sidebar JavaScript must parse successfully.');
+  assert(!/\b(?:function|var|let|const|class)\s+top\b/.test(clientScript), 'Sidebar must not redeclare the browser top global.');
+  assert(clientScript.includes('function renderHeader()'), 'Sidebar header helper should use an unambiguous identifier.');
+  assert(clientScript.includes('window.addEventListener("error"'), 'Runtime boot errors must have a visible fallback.');
+  assert(clientScript.includes('window.addEventListener("unhandledrejection"'), 'Unhandled promise rejections must have a visible fallback.');
+  assert(clientScript.includes('Spoti Sync could not start.'), 'Boot failure must render a useful message.');
+  assert(clientScript.includes('google.script.run.withSuccessHandler'), 'Apps Script RPC bridge must remain wired.');
+  assert(clientScript.includes('spotiSyncGetAppHome'), 'Home refresh must still use the canonical app-home RPC.');
+  assert(clientScript.includes('r.innerHTML=html'), 'Successful render must replace the static loading state.');
+  assert(clientScript.includes('renderHome(STATE);'), 'Initial home render must still occur from the embedded model.');
+})();
+
 (function testJobEditorNoLongerContainsSecondSidebarImplementation() {
   assert(!editorSource.includes('showSidebar('));
   assert(!editorSource.includes('function editorHtml('));
@@ -173,4 +203,4 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(!uiSource.includes('spotiSyncSearchPlaylists'));
 })();
 
-console.log('v1.4 single-surface app and Job service tests passed.');
+console.log('v1.4 single-surface app, sidebar boot, and Job service tests passed.');
