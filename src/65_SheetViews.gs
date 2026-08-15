@@ -48,30 +48,6 @@ var SpotiSync = SpotiSync || {};
       .setFontWeight('bold').setFontSize(18).setVerticalAlignment('middle');
   }
 
-  function applyPlaylistLinks(sheet) {
-    var columns = ns.SheetStore._jobColumns;
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) { return; }
-    var rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
-    rows.forEach(function (row, index) {
-      var sourceId = ns.Core.trim(row[columns.SOURCE_PLAYLIST_ID - 1]);
-      var targetId = ns.Core.trim(row[columns.TARGET_PLAYLIST_ID - 1]);
-      var rowNumber = index + 2;
-      if (sourceId && /^[A-Za-z0-9]{10,64}$/.test(sourceId)) {
-        sheet.getRange(rowNumber, columns.SOURCE).setRichTextValue(
-          SpreadsheetApp.newRichTextValue().setText('Playlist ↗')
-            .setLinkUrl('https://open.spotify.com/playlist/' + sourceId).build()
-        );
-      }
-      if (targetId && /^[A-Za-z0-9]{10,64}$/.test(targetId)) {
-        sheet.getRange(rowNumber, columns.TARGET).setRichTextValue(
-          SpreadsheetApp.newRichTextValue().setText('Open playlist ↗')
-            .setLinkUrl('https://open.spotify.com/playlist/' + targetId).build()
-        );
-      }
-    });
-  }
-
   function styleJobsSheet(sheet) {
     var columns = ns.SheetStore._jobColumns;
     var width = ns.SheetStore.jobHeaders.length;
@@ -82,8 +58,6 @@ var SpotiSync = SpotiSync || {};
       'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
     ];
     var checkbox = SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build();
-    var source = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Liked Songs', 'Playlist ↗'], true).setAllowInvalid(false).build();
     var behavior = SpreadsheetApp.newDataValidation()
       .requireValueInList(['Exact Mirror', 'Append Only'], true).setAllowInvalid(false).build();
     var frequency = SpreadsheetApp.newDataValidation()
@@ -98,12 +72,12 @@ var SpotiSync = SpotiSync || {};
     styleTableHeader(sheet.getRange(1, 1, 1, width));
     sheet.setRowHeight(1, 32);
 
-    // Always remove legacy validation from the visible editable columns first.
-    // In v1.2 column F was Strategy; in v1.3 it is Frequency. Without this,
-    // partially migrated sheets can incorrectly show MIRROR / APPEND in F.
+    // Always remove legacy validation from the visible configuration columns first.
+    // Source/Target are presentation-only in v1.3.5+, while Behavior/Frequency
+    // retain their current validation. In v1.2 column F was Strategy, so clearing
+    // through Frequency also prevents stale MIRROR / APPEND rules from returning.
     sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();
     sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);
-    sheet.getRange(2, columns.SOURCE, validationRows, 1).setDataValidation(source);
     sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);
     sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);
     sheet.getRange(1, columns.FREQUENCY)
@@ -119,7 +93,6 @@ var SpotiSync = SpotiSync || {};
     sheet.setColumnWidth(columns.HEALTH, 150);
     sheet.setColumnWidth(columns.NEXT, 130);
     sheet.hideColumns(columns.ID, width - columns.ID + 1);
-    applyPlaylistLinks(sheet);
   }
 
   function styleActivitySheet(sheet) {
@@ -167,7 +140,6 @@ var SpotiSync = SpotiSync || {};
       colors.push([color, COLORS.MUTED]);
     });
     sheet.getRange(2, columns.HEALTH, values.length, 2).setValues(values).setFontColors(colors);
-    applyPlaylistLinks(sheet);
   }
 
   function recentActivity(limit) {

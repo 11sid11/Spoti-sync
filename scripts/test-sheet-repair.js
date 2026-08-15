@@ -155,6 +155,37 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert(!sheetViews.includes("'MIRROR', 'APPEND'"), 'Legacy strategy values must not be offered as Frequency choices.');
 })();
 
+(function testSourceColumnIsPresentationOnly() {
+  assert(
+    sheetViews.includes('sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);'),
+    'Enabled must retain checkbox validation.'
+  );
+  assert(
+    sheetViews.includes('sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);'),
+    'Behavior must retain its dropdown validation.'
+  );
+  assert(
+    sheetViews.includes('sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);'),
+    'Frequency must retain its dropdown validation.'
+  );
+  assert(
+    !sheetViews.includes("requireValueInList(['Liked Songs', 'Playlist ↗']"),
+    'SheetViews must not create the obsolete Source dropdown.'
+  );
+  assert(
+    !sheetViews.includes('columns.SOURCE, validationRows, 1).setDataValidation'),
+    'Source must remain presentation-only and receive no SheetViews validation.'
+  );
+  assert(
+    !sheetViews.includes('function applyPlaylistLinks(sheet)'),
+    'Friendly Source/Target presentation must have a single owner in JobEditor.'
+  );
+  assert(
+    !sheetViews.includes("setText('Playlist ↗')") && !sheetViews.includes("setText('Open playlist ↗')"),
+    'SheetViews must not reintroduce generic playlist presentation labels.'
+  );
+})();
+
 (function testCustomNonPresetFrequencyStillParses() {
   const row = [
     true, 'Custom cadence', 'Liked Songs', 'Open playlist ↗', 'Exact Mirror', 'Every 21 days',
@@ -205,4 +236,4 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
   assert(sheetStoreSource.includes('refreshRunViews();'));
 })();
 
-console.log('Sheet repair, Frequency UX, and scheduler performance checks passed.');
+console.log('Sheet repair, validation ownership, Frequency UX, and scheduler performance checks passed.');
