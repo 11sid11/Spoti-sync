@@ -2,6 +2,23 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.3.4 — 2026-08-15
+
+### Improved
+
+- Added a dedicated **Frequency** dropdown in Jobs with common presets: `Daily`, `Every 2 days`, `Every 3 days`, `Every 7 days`, `Every 10 days`, `Every 14 days`, `Every 30 days`, `Every 60 days`, and `Every 90 days`.
+- Kept the existing flexible parser: users can still type any valid custom interval such as `Every 21 days`, from 1 to 3650 days, instead of being limited to preset values.
+- Added validation help text and a clearer Frequency column note so new users can discover both preset and custom scheduling without reading documentation first.
+- Frequency validation is separate from Behavior validation and continues to clear legacy v1.2 rules first, so `MIRROR` / `APPEND` cannot reappear as Frequency choices.
+
+### Tests
+
+- Added regression coverage for the preset list, dropdown configuration, custom-value allowance, help text, legacy-strategy exclusion, and parsing a non-preset `Every 21 days` schedule.
+
+### Upgrade note
+
+- Install the 1.3.4 bundle in the same Apps Script project and run **Spoti Sync → Initialize / Repair Sheets** once so the updated Frequency validation is applied. Existing Spotify Client ID, OAuth tokens, playlist IDs, scheduler state, and job data are preserved.
+
 ## 1.3.3 — 2026-08-15
 
 ### Fixed
