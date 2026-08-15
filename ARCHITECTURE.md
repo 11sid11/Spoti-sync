@@ -1,15 +1,15 @@
 # Architecture
 
-## Goals
+## Design goal
 
-Spoti Sync is optimized for a small operational footprint:
+Spoti Sync is a small self-deployed automation system with one user-facing control plane:
 
-- no hosted application server or central user database;
-- no shared Spotify credentials;
-- no always-on user device;
-- no runtime package manager;
-- one scheduled trigger per installation;
-- source and strategy abstractions that remain easy to extend.
+```text
+Spoti Sync sidebar = configure + operate
+Google Sheet       = status + activity + hidden local persistence
+```
+
+The project intentionally avoids a hosted application server, central user database, shared Spotify credentials, runtime package manager, and per-job scheduler triggers.
 
 ## Deployment model
 
@@ -24,10 +24,12 @@ User's Google Sheet
               |
               +-- OAuth + PKCE
               +-- Spotify API client
+              +-- job persistence
               +-- sync engine
-              +-- playlist heartbeat
-              +-- daily scheduler
-              +-- Sheet UI + activity
+              +-- optional playlist heartbeat
+              +-- one reconciled daily scheduler
+              +-- single sidebar application
+              +-- read-only status + Activity views
                     |
                     v
               Spotify Web API
@@ -45,65 +47,150 @@ The static site never receives Spotify tokens, Google tokens, playlist contents,
 - authorization timestamp
 - temporary PKCE verifier
 
-Replacing `Code.gs` and rebuilding Sheet layouts does not clear User Properties.
+Replacing `Code.gs` or migrating the Sheet layout does not clear these properties.
 
 ### Bound Google Sheet
 
-- `Dashboard` — system health, latest run, next automation, recent activity
-- `Jobs` — visible job controls/status plus hidden stable job IDs, playlist IDs, and per-job telemetry
-- `Schedule` — scheduler state and upcoming eligible jobs
-- `Activity` — bounded execution history
+User-facing:
+
+- **Spoti Sync** — read-only system/job status.
+- **Activity** — bounded execution history.
+
+Internal:
+
+- **Jobs** — hidden durable job records, including stable Job IDs, playlist IDs, behavior, automation interval, heartbeat preference and per-job telemetry.
+- **Schedule** — legacy v1.3 sheet preserved/hidden on upgrade; normal v1.4 runtime does not render it.
 
 ### Document Properties
 
 - scheduler telemetry
 - update-check cache/status
-- run summary
-- one tiny heartbeat phrase index per stable job ID
+- latest run summary
+- playlist display-name cache
+- one tiny heartbeat phrase index per stable Job ID
 
 ### GitHub
 
-Source, static documentation, tests, CI, and release metadata only.
+Source, static documentation, tests, CI, installer manifest, and release metadata only.
 
-## Job identity and layout
+## Single-surface application
 
-Each job receives a stable opaque `job_<id>` when created or when a pre-1.3 row is migrated. Runtime state such as heartbeat rotation keys off that ID rather than the row number. Rows may therefore move without changing job identity.
+`Spoti Sync → Open Spoti Sync` opens the only normal control surface.
 
-The visible Jobs columns favor human-readable values (`Liked Songs`, `Exact Mirror`, `Daily`, health and eligibility). Spotify playlist IDs and telemetry are retained in hidden columns; the visible playlist cells link to Spotify.
+The sidebar owns:
+
+- Spotify connection state/setup
+- job list/cards
+- Add/Edit/Delete Job
+- manual Sync now
+- Automation selection
+- per-job playlist-description status setting
+- update check
+- advanced local repair
+
+Google Sheet cells are not a second configuration interface.
+
+## Job model
+
+A job has stable identity plus four primary user concepts:
+
+```text
+Source → Target
+Behavior
+Automation
+```
+
+and one optional presentation feature:
+
+```text
+Heartbeat Enabled
+```
+
+Runtime identity uses hidden Spotify playlist IDs, not human-readable display labels.
+
+Automation maps onto the existing storage model:
+
+```text
+Off          → enabled=false
+Daily        → enabled=true, intervalDays=1
+Every N days → enabled=true, intervalDays=N
+```
+
+The canonical server-side Frequency parser remains responsible for validating the supported 1–3650 day interval.
 
 ## Runtime model
 
-A single time-driven trigger invokes `spotiSyncScheduler()` once per day. The scheduler reads enabled jobs and runs only jobs that are due according to their frequency.
+### Automatic runs
 
-Source snapshots are cached for one execution. Multiple jobs using Liked Songs reuse the same fetched source snapshot.
+`Scheduler.reconcile()` enforces the invariant:
+
+```text
+0 automated jobs  → 0 Spoti Sync triggers
+1+ automated jobs → exactly 1 Spoti Sync daily trigger
+```
+
+An already-correct single trigger is retained. Missing or duplicate Spoti Sync triggers are normalized. There are no per-job triggers.
+
+The daily trigger invokes `spotiSyncScheduler()`, which runs enabled jobs only when their configured interval is due.
+
+### Manual runs
+
+A user can explicitly run any valid job by stable Job ID, including a job whose Automation setting is Off. Manual execution does not mutate the job's enabled state.
+
+Both scheduled and manual writes use the script lock and the same job execution path.
 
 ## Sync execution
 
-For each job:
+For each selected job:
 
 ```text
 fetch source + target
         ↓
-plan MIRROR / APPEND
+plan Exact Mirror / Append Only
         ↓
 apply playlist item removals/additions
         ↓
-update target playlist description heartbeat
+if Heartbeat Enabled:
+    update target playlist description
         ↓
-record job telemetry + Activity row
+record per-job telemetry + Activity row
 ```
 
-The description request is deliberately after playlist-item writes but inside the same job execution. A failed track mutation therefore cannot leave a misleading fresh heartbeat. A description-only failure is non-fatal and produces `Success with warning`.
+A description-only failure is non-fatal and produces `Success with warning`. A failed music mutation never receives a misleading fresh heartbeat.
 
 ## Playlist heartbeat
 
-`75_PlaylistHeartbeat.gs` owns formatting and phrase rotation. It generates:
+`75_PlaylistHeartbeat.gs` owns description formatting and phrase rotation:
 
 ```text
 [rotating Spoti Sync phrase] · sid.is-a.dev · Synced [weekday] at [time]
 ```
 
-The timestamp uses the spreadsheet timezone. Phrase state advances only after Spotify accepts `PUT /playlists/{id}`. The request body contains `description` only; Spoti Sync does not send a replacement playlist name.
+The job-owned `Heartbeat Enabled` field controls whether SyncEngine invokes that module. Disabling it does not clear or replace the current Spotify description.
+
+Phrase rotation state remains in Document Properties and advances only after Spotify accepts the description update.
+
+## Playlist catalog and display names
+
+The sidebar home uses local/cached job metadata and does not fetch the Spotify playlist catalog just to render.
+
+Opening Add/Edit lazily loads the catalog once, with a short per-user cache. Search/filtering is client-side. Manual playlist URL/ID input remains available if the catalog cannot be loaded.
+
+Playlist names are presentation metadata; stable Spotify IDs remain authoritative.
+
+## View rendering
+
+`SheetViews` owns only the read-only summary and Activity presentation.
+
+Normal runtime does not format or add validation to hidden Jobs, and does not render the legacy Schedule sheet. This removes the earlier class of bugs where sheet validations/presentation and the sidebar competed for ownership of the same configuration cells.
+
+## Migration
+
+v1.4 upgrades the v1.3.8 Jobs schema by appending `Heartbeat Enabled` and defaults existing configured jobs to `true`.
+
+Migration preserves stable Job IDs, playlist IDs, names, behavior, frequencies, automation state and telemetry. It remains explicit/bounded: no whole-sheet `clearFormats()` and no OAuth/property reset.
+
+The old Dashboard is renamed to Spoti Sync when safe. A conflicting unrelated user sheet named `Spoti Sync` must never be cleared; a safe status fallback is used instead.
 
 ## Strategy contract
 
@@ -111,31 +198,27 @@ Strategies remain pure planning logic.
 
 ### MIRROR
 
-- remove managed target tracks absent from the source;
+- remove managed target tracks absent from source;
 - add missing source tracks;
 - repair duplicate managed target tracks;
 - leave unsupported/non-track items alone;
-- insert missing Liked Songs tracks at the front while preserving source order.
+- preserve expected source ordering.
 
 ### APPEND
 
 - never remove target items;
 - append only missing source tracks;
-- for newest-first sources, append missing tracks oldest-to-newest.
+- preserve chronological append behavior for newest-first sources.
 
-## Concurrency and retries
+## Safety and resilience
 
-- A script lock prevents overlapping manual/scheduled writes.
-- Spotify `401` triggers one forced token refresh and retry.
-- Spotify `429` honors practical `Retry-After` values.
-- transient `5xx` responses use capped backoff.
+- Script lock prevents overlapping playlist writes.
+- Spotify `401` can trigger token refresh/retry.
+- Spotify `429` honors practical Retry-After values.
+- transient `5xx` responses use bounded retries.
 - one failed job does not stop later jobs.
-- heartbeat failures are warnings and do not cause playlist mutations to be replayed.
-
-## Safety properties
-
-- OAuth scopes exclude `user-library-modify`; Spoti Sync cannot unlike/save library tracks.
-- OAuth tokens never go to Sheet cells or application logs.
-- API errors are sanitized before Sheet logging.
-- playlist writes are limited to explicitly configured targets.
-- update checks never request `script.projects` or execute remote code.
+- heartbeat failure does not replay playlist mutations.
+- OAuth scopes exclude `user-library-modify`.
+- tokens are never intentionally written to Sheet cells/logs.
+- playlist writes are limited to configured target IDs.
+- update checks never execute remote code or request `script.projects`.
