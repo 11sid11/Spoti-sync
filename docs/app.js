@@ -16,6 +16,7 @@
     '80_Scheduler.gs',
     '85_UpdateChecker.gs',
     '90_Ui.gs',
+    '92_JobEditor.gs',
     '99_Entrypoints.gs'
   ];
   const rawSourceBase = 'https://raw.githubusercontent.com/11sid11/Spoti-sync/main/src/';
