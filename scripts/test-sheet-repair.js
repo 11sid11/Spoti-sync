@@ -130,9 +130,11 @@ const sheetStoreSource = fs.readFileSync(path.join(root, 'src', '60_SheetStore.g
     'Daily', 'Every 2 days', 'Every 3 days', 'Every 7 days', 'Every 10 days',
     'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days'
   ];
+  const limits = SheetStore.frequencyLimits();
 
   assert.deepStrictEqual(Array.from(SheetStore.frequencyPresets()), expectedPresets);
-  assert.deepStrictEqual(SheetStore.frequencyLimits(), { min: 1, max: 3650 });
+  assert.strictEqual(limits.min, 1);
+  assert.strictEqual(limits.max, 3650);
   assert.deepStrictEqual(Array.from(SheetStore.behaviorOptions()), ['Exact Mirror', 'Append Only']);
 
   assert.strictEqual(SheetStore._parseFrequency('Daily'), 1);
