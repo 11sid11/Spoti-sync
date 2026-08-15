@@ -62,10 +62,12 @@ var SpotiSync = SpotiSync || {};
 
     if (write) {
       applyPlan(job, plan, runtime);
-      heartbeat = ns.PlaylistHeartbeat.update(job, new Date());
-      if (!heartbeat.ok) {
-        summary.status = 'Success with warning';
-        summary.warning = 'Playlist synced, but its Spotify description could not be updated: ' + heartbeat.error;
+      if (job.heartbeatEnabled !== false) {
+        heartbeat = ns.PlaylistHeartbeat.update(job, new Date());
+        if (!heartbeat.ok) {
+          summary.status = 'Success with warning';
+          summary.warning = 'Playlist synced, but its Spotify description could not be updated: ' + heartbeat.error;
+        }
       }
     }
 
@@ -84,15 +86,31 @@ var SpotiSync = SpotiSync || {};
     return parts.join(' · ');
   }
 
+  function matchingConfigurationErrors(errors, options) {
+    var opts = options || {};
+    if (opts.jobId) {
+      return errors.filter(function (item) { return item.jobId === opts.jobId; });
+    }
+    return errors.filter(function (item) { return item.enabled; });
+  }
+
+  function matchingJobs(jobs, options, now) {
+    var opts = options || {};
+    if (opts.jobId) {
+      return jobs.filter(function (job) { return job.jobId === opts.jobId; });
+    }
+    return jobs.filter(function (job) {
+      return job.enabled && (!opts.dueOnly || ns.SheetStore.isJobDue(job, now));
+    });
+  }
+
   function runInternal(options) {
     var opts = options || {};
     var now = new Date();
     var runtime = { sourceCache: Object.create(null) };
     var readResult = ns.SheetStore.getJobReadResult();
-    var configurationErrors = readResult.errors;
-    var jobs = readResult.jobs.filter(function (job) {
-      return job.enabled && (!opts.dueOnly || ns.SheetStore.isJobDue(job, now));
-    });
+    var configurationErrors = matchingConfigurationErrors(readResult.errors, opts);
+    var jobs = matchingJobs(readResult.jobs, opts, now);
     var result = {
       jobs: [],
       added: 0,
@@ -103,6 +121,10 @@ var SpotiSync = SpotiSync || {};
       errors: [],
       warnings: []
     };
+
+    if (opts.jobId && !jobs.length && !configurationErrors.length) {
+      throw new Error('Spoti Sync job not found.');
+    }
 
     configurationErrors.forEach(function (configError) {
       result.errors.push(configError.name + ': ' + configError.error);
@@ -205,6 +227,14 @@ var SpotiSync = SpotiSync || {};
     return result;
   }
 
+  function refreshSummaryBestEffort() {
+    try {
+      ns.SheetStore.refreshSummary();
+    } catch (ignored) {
+      // Sync correctness must not depend on presentation.
+    }
+  }
+
   ns.SyncEngine = {
     previewEnabled: function () {
       return runInternal({ dueOnly: false, write: false });
@@ -212,7 +242,19 @@ var SpotiSync = SpotiSync || {};
 
     runNow: function () {
       return ns.SyncEngine.withWriteLock(function () {
-        return runInternal({ dueOnly: false, write: true });
+        var result = runInternal({ dueOnly: false, write: true });
+        refreshSummaryBestEffort();
+        return result;
+      });
+    },
+
+    runJob: function (jobId) {
+      var id = ns.Core.trim(jobId);
+      ns.Core.assert(id, 'Job ID is required.');
+      return ns.SyncEngine.withWriteLock(function () {
+        var result = runInternal({ jobId: id, write: true });
+        refreshSummaryBestEffort();
+        return result;
       });
     },
 
@@ -235,6 +277,7 @@ var SpotiSync = SpotiSync || {};
     },
 
     _executeJob: executeJob,
-    _planJob: planJob
+    _planJob: planJob,
+    _runInternal: runInternal
   };
 })(SpotiSync);
