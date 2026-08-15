@@ -10,17 +10,7 @@ const root = path.resolve(__dirname, '..');
 const properties = new Map();
 const calls = [];
 const context = vm.createContext({
-  console,
-  Date,
-  Object,
-  Array,
-  String,
-  Number,
-  Boolean,
-  Math,
-  JSON,
-  RegExp,
-  Error,
+  console, Date, Object, Array, String, Number, Boolean, Math, JSON, RegExp, Error,
   encodeURIComponent,
   Utilities: {
     formatDate(date, timezone, pattern) {
@@ -87,7 +77,6 @@ const H = context.SpotiSync.PlaylistHeartbeat;
   assert.strictEqual(H._readIndex(job), currentIndex);
 })();
 
-// Verify sync ordering and warning semantics with minimal engine mocks.
 context.SpotiSync.Sources = {
   getForJob() { return { tracks: [{ writeUri: 'spotify:track:A' }], ignoredCount: 0 }; },
   getTargetPlaylist() { return { tracks: [], ignoredCount: 0 }; },
@@ -112,18 +101,32 @@ context.SpotiSync.PlaylistHeartbeat.update = function () {
 };
 load('70_SyncEngine.gs');
 
-(function testHeartbeatRunsInSameJobAfterPlaylistWrites() {
+(function testHeartbeatRunsAfterPlaylistWritesWhenEnabled() {
   calls.length = 0;
   const summary = context.SpotiSync.SyncEngine._executeJob({
     name: 'Mirror',
     jobId: 'job_order',
     targetPlaylist: '1234567890AB',
-    strategy: 'MIRROR'
+    strategy: 'MIRROR',
+    heartbeatEnabled: true
   }, { sourceCache: Object.create(null) }, true);
   assert.strictEqual(summary.status, 'Success');
   const itemIndex = calls.findIndex((entry) => entry[0] === 'items');
   const heartbeatIndex = calls.findIndex((entry) => entry[0] === 'heartbeat');
   assert(itemIndex !== -1 && heartbeatIndex !== -1 && itemIndex < heartbeatIndex);
+})();
+
+(function testHeartbeatDisabledSkipsDescriptionApiEntirely() {
+  calls.length = 0;
+  const summary = context.SpotiSync.SyncEngine._executeJob({
+    name: 'Manual description',
+    jobId: 'job_no_heartbeat',
+    targetPlaylist: '1234567890AB',
+    strategy: 'MIRROR',
+    heartbeatEnabled: false
+  }, { sourceCache: Object.create(null) }, true);
+  assert.strictEqual(summary.status, 'Success');
+  assert.strictEqual(calls.some((entry) => entry[0] === 'heartbeat'), false);
 })();
 
 (function testHeartbeatFailureDoesNotFailPlaylistSync() {
@@ -134,10 +137,11 @@ load('70_SyncEngine.gs');
     name: 'Mirror',
     jobId: 'job_warn',
     targetPlaylist: '1234567890AB',
-    strategy: 'MIRROR'
+    strategy: 'MIRROR',
+    heartbeatEnabled: true
   }, { sourceCache: Object.create(null) }, true);
   assert.strictEqual(summary.status, 'Success with warning');
   assert.match(summary.warning, /description API unavailable/);
 })();
 
-console.log('Playlist heartbeat tests passed.');
+console.log('Playlist heartbeat opt-in/out and ordering tests passed.');

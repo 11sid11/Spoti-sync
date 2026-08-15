@@ -2,6 +2,42 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.4.0 — 2026-08-15
+
+### Simplified
+
+- Made **Spoti Sync → Open Spoti Sync** the single normal application surface. Connection, job management, manual sync, automation, update checks and repair now live in one sidebar instead of competing menu/sheet workflows.
+- Replaced the user-facing Enabled + Frequency + Scheduler model with **Automation: Off / Daily / Every N days**. The existing server-side interval parser remains authoritative.
+- Converted Google Sheets into operational output: a read-only **Spoti Sync** status sheet plus **Activity** history. `Jobs` remains hidden local persistence and legacy `Schedule` is preserved/hidden instead of rendered as another control surface.
+- Added job-card **Sync now**, Edit and Delete actions keyed by stable Job ID. Automation Off jobs remain manually runnable without temporarily enabling them.
+
+### Automation
+
+- Added idempotent scheduler reconciliation: zero automated jobs means zero Spoti Sync triggers; one or more automated jobs means exactly one daily trigger. An already-correct trigger is retained instead of being recreated on every edit.
+- Add/Edit/Delete and repair reconcile scheduler state automatically, so normal users no longer enable or disable Apps Script triggers manually.
+
+### Playlist status
+
+- Added per-job **Show Spoti Sync status in playlist description**, enabled by default for existing and new jobs. Turning it off skips the description request without blanking the user's current description.
+- Preserved the existing rotating `sid.is-a.dev` heartbeat wording and Success-with-warning behavior when only description updating fails.
+
+### Migration and safety
+
+- Appended `Heartbeat Enabled` to the Jobs storage schema while preserving all existing column positions, Job IDs, source/target playlist IDs, custom schedules, telemetry and Activity history.
+- Preserved Spotify Client ID, OAuth tokens/session, heartbeat phrase indexes and compatible scheduler trigger state.
+- Kept migration bounded and explicit with no whole-sheet `clearFormats()` and no unnecessary dataset rewrite.
+- Protected unrelated user sheets from a rare name collision with the new `Spoti Sync` summary sheet.
+
+### Performance and ownership
+
+- The app home renders from local job/status data and does not fetch the Spotify playlist catalog. Catalog loading is lazy/cached for Add/Edit, and playlist search remains client-side.
+- Removed normal Jobs validation/presentation and Schedule rendering so hidden persistence is no longer treated as a second UI.
+- Kept business rules in SheetStore/SyncEngine/Scheduler and thin RPC/menu entrypoints rather than duplicating configuration logic in the sidebar.
+
+### Upgrade note
+
+- Install the 1.4.0 bundle in the same Apps Script project, save, reload the Sheet, then choose **Spoti Sync → Open Spoti Sync** once. The local migration runs automatically. No Spotify reconnection, Client ID re-entry, playlist-ID re-entry, job recreation or manual scheduler recreation is required.
+
 ## 1.3.8 — 2026-08-15
 
 ### Improved
@@ -197,14 +233,14 @@ All notable changes to Spoti Sync are documented here.
 - `Jobs` is now a compact operational table with friendly Source, Behavior, Frequency, Health, and Next Eligible columns; internal IDs and telemetry moved to hidden columns.
 - `History` is migrated/renamed to **Activity**, with human-readable result, change counts, duration, details, and hidden job ID.
 - The old scheduler panel in Jobs columns O:P has been removed entirely.
-- `Initialize / Repair Sheets` migrates existing job playlist IDs and telemetry into the 1.3 layout while leaving User Properties untouched, so the Spotify Client ID and OAuth tokens do not need to be entered again.
+- `Initialize / Repair Sheets` migrates existing job playlist IDs and telemetry into this structure while leaving User Properties untouched, so the Spotify Client ID and OAuth tokens do not need to be entered again.
 - Scheduler and interactive state changes refresh Dashboard, Jobs, Schedule, and Activity-derived views together.
 - User-facing project links now prefer `https://sid.is-a.dev/Spoti-sync/`; GitHub remains the source/changelog location.
 
 ### Spotify heartbeat behavior
 
 - Track additions/removals and description updating happen inside the same Spoti Sync job execution.
-- Playlist-item writes complete before the heartbeat description is sent, preventing a false fresh timestamp when the playlist mutation fails.
+- Playlist-item writes complete before the heartbeat description is sent, preventing a false fresh timestamp when the playlist mutation failed.
 - Description failures do not turn a successful playlist sync into a failed music sync; they are recorded as **Success with warning**.
 - Spoti Sync updates only the playlist `description` field and never changes the playlist name.
 - Phrase rotation advances only after Spotify accepts the description update.

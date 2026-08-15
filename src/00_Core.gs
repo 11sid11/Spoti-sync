@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.3.8';
+  ns.VERSION = '1.4.0';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
@@ -31,6 +31,7 @@ var SpotiSync = SpotiSync || {};
     TOKEN_EXPIRY_SKEW_MS: 60 * 1000,
     DEFAULT_SCHEDULER_HOUR: 3,
     SHEETS: Object.freeze({
+      SUMMARY: 'Spoti Sync',
       DASHBOARD: 'Dashboard',
       JOBS: 'Jobs',
       SCHEDULE: 'Schedule',

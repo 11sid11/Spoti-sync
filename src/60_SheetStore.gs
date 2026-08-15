@@ -6,6 +6,14 @@ var SpotiSync = SpotiSync || {};
   var JOB_HEADERS = [
     'Enabled', 'Name', 'Source', 'Target', 'Behavior', 'Frequency', 'Health', 'Next Eligible',
     'Job ID', 'Source Playlist ID', 'Target Playlist ID', 'Last Attempt', 'Last Success',
+    'Last Status', 'Last Added', 'Last Removed', 'Last Error / Warning', 'Heartbeat Enabled'
+  ];
+
+  // v1.3.8 storage schema. v1.4 appends one job-owned configuration field
+  // without changing any existing column positions or stable IDs.
+  var V138_JOB_HEADERS = [
+    'Enabled', 'Name', 'Source', 'Target', 'Behavior', 'Frequency', 'Health', 'Next Eligible',
+    'Job ID', 'Source Playlist ID', 'Target Playlist ID', 'Last Attempt', 'Last Success',
     'Last Status', 'Last Added', 'Last Removed', 'Last Error / Warning'
   ];
 
@@ -26,7 +34,7 @@ var SpotiSync = SpotiSync || {};
     ENABLED: 1, NAME: 2, SOURCE: 3, TARGET: 4, BEHAVIOR: 5, FREQUENCY: 6,
     HEALTH: 7, NEXT: 8, ID: 9, SOURCE_PLAYLIST_ID: 10, TARGET_PLAYLIST_ID: 11,
     LAST_ATTEMPT: 12, LAST_SUCCESS: 13, LAST_STATUS: 14, LAST_ADDED: 15,
-    LAST_REMOVED: 16, LAST_ERROR: 17
+    LAST_REMOVED: 16, LAST_ERROR: 17, HEARTBEAT_ENABLED: 18
   });
 
   var FREQUENCY_PRESET_DAYS = Object.freeze([1, 2, 3, 7, 10, 14, 30, 60, 90]);
@@ -72,6 +80,10 @@ var SpotiSync = SpotiSync || {};
       String(value).toLowerCase() === 'yes' || String(value) === '1';
   }
 
+  function heartbeatEnabledValue(value) {
+    return isBlankValue(value) ? true : normalizeBoolean(value);
+  }
+
   function createJobId() {
     return 'job_' + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
   }
@@ -86,7 +98,7 @@ var SpotiSync = SpotiSync || {};
   }
 
   function legacySourceLabel(sourceType) {
-    return sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? 'Playlist ↗' : 'Liked Songs';
+    return sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? 'Playlist' : 'Liked Songs';
   }
 
   function parseLegacySourceLabel(value) {
@@ -151,6 +163,13 @@ var SpotiSync = SpotiSync || {};
     return days;
   }
 
+  function automationLabel(job) {
+    if (!job.enabled) {
+      return 'Off';
+    }
+    return frequencyLabel(job.intervalDays);
+  }
+
   function dateKeyFromOrdinal(ordinal) {
     return Utilities.formatDate(new Date(ordinal * 86400000), 'UTC', 'yyyy-MM-dd');
   }
@@ -180,11 +199,11 @@ var SpotiSync = SpotiSync || {};
 
   function healthLabel(job) {
     var status = ns.Core.trim(job.lastStatus).toLowerCase();
-    if (!job.enabled) { return '○ Disabled'; }
     if (status.indexOf('error') !== -1 || status.indexOf('failure') !== -1) {
       return '✕ Needs attention';
     }
     if (status.indexOf('warning') !== -1) { return '⚠ Warning'; }
+    if (!job.enabled) { return '○ Manual only'; }
     if (!job.lastSuccess) { return '● Ready'; }
     return '✓ Healthy';
   }
@@ -220,14 +239,14 @@ var SpotiSync = SpotiSync || {};
       normalizeBoolean(row[0]),
       ns.Core.trim(row[1]) || 'Spotify Sync',
       legacySourceLabel(sourceType),
-      'Open playlist ↗',
+      ns.Core.trim(row[4]) || 'Spotify playlist',
       behaviorLabel(strategy),
       Number.isInteger(intervalDays) && intervalDays > 0 ? frequencyLabel(intervalDays) : ns.Core.trim(row[6]),
       '', '', createJobId(),
       sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? recoverLegacyPlaylistId(row[3]) : '',
       recoverLegacyPlaylistId(row[4]),
       row[7] || '', row[8] || '', ns.Core.trim(row[9]), Number(row[10] || 0),
-      Number(row[11] || 0), ns.Core.trim(row[12])
+      Number(row[11] || 0), ns.Core.trim(row[12]), true
     ];
   }
 
@@ -273,9 +292,12 @@ var SpotiSync = SpotiSync || {};
 
     rows.forEach(function (row) {
       var current = row.slice(0, JOB_HEADERS.length);
+      while (current.length < JOB_HEADERS.length) {
+        current.push('');
+      }
 
       // Recover the specific partially migrated v1.2 row shape. This repair is
-      // invoked only by Initialize / Repair Sheets, never by a normal sync.
+      // invoked only by Initialize / Repair, never by a normal sync.
       if (looksLikePartialLegacyJob(current)) {
         repaired.push(legacyJobToStoredRow(current.slice(0, LEGACY_JOB_HEADERS.length)));
         changed = true;
@@ -292,6 +314,10 @@ var SpotiSync = SpotiSync || {};
         current[JOB_COL.ID - 1] = createJobId();
         changed = true;
       }
+      if (isBlankValue(current[JOB_COL.HEARTBEAT_ENABLED - 1])) {
+        current[JOB_COL.HEARTBEAT_ENABLED - 1] = true;
+        changed = true;
+      }
       repaired.push(current);
     });
 
@@ -303,12 +329,11 @@ var SpotiSync = SpotiSync || {};
     var usedRows = Math.max(sheet.getLastRow(), values.length, 1);
     var managedColumns = Math.max(headers.length, Number(legacyWidth || 0));
 
-    // Migration work is bounded to the rows/columns owned by Spoti Sync. Avoid
-    // whole-sheet clears so formatting outside the migrated data is untouched.
+    // Migration work is bounded to the rows/columns owned by Spoti Sync.
     sheet.getRange(1, 1, usedRows, managedColumns).clearDataValidations();
 
-    // Write the replacement dataset before clearing old trailing content. If
-    // the write fails, legacy job configuration is still present in the sheet.
+    // Write before clearing trailing legacy content so a failed write leaves
+    // the previous configuration intact.
     sheet.getRange(1, 1, values.length, headers.length).setValues(values);
 
     if (usedRows > values.length) {
@@ -324,17 +349,17 @@ var SpotiSync = SpotiSync || {};
     var ss = spreadsheet();
     var sheet = ss.getSheetByName(ns.Constants.SHEETS.JOBS) || ss.insertSheet(ns.Constants.SHEETS.JOBS);
     var lastRow = sheet.getLastRow();
-    var width = Math.max(sheet.getLastColumn(), JOB_HEADERS.length, LEGACY_JOB_HEADERS.length);
+    var width = Math.max(sheet.getLastColumn(), JOB_HEADERS.length, V138_JOB_HEADERS.length, LEGACY_JOB_HEADERS.length);
     var header = sheet.getRange(1, 1, 1, width).getValues()[0];
     var isEmpty = lastRow === 0 || (lastRow === 1 && isBlankRow(header));
     var migratedRows = [];
     var repairResult;
 
     if (isEmpty) {
-      replaceSheetData(sheet, JOB_HEADERS, [], LEGACY_JOB_HEADERS.length);
+      replaceSheetData(sheet, JOB_HEADERS, [], JOB_HEADERS.length);
     } else if (headersMatch(header, LEGACY_JOB_HEADERS)) {
       if (!settings.repair) {
-        throw new Error('The Jobs sheet needs migration. Run Spoti Sync → Initialize / Repair Sheets once.');
+        throw new Error('The Jobs sheet needs migration. Open Spoti Sync and use Settings → Repair data once.');
       }
       if (lastRow > 1) {
         migratedRows = sheet.getRange(2, 1, lastRow - 1, LEGACY_JOB_HEADERS.length).getValues()
@@ -342,12 +367,23 @@ var SpotiSync = SpotiSync || {};
           .map(legacyJobToStoredRow);
       }
       replaceSheetData(sheet, JOB_HEADERS, migratedRows, LEGACY_JOB_HEADERS.length);
+    } else if (headersMatch(header, V138_JOB_HEADERS) && !headersMatch(header, JOB_HEADERS)) {
+      if (!settings.repair) {
+        throw new Error('This installation needs the Spoti Sync 1.4 data upgrade. Open Spoti Sync once.');
+      }
+      if (lastRow > 1) {
+        repairResult = repairCurrentJobRows(
+          sheet.getRange(2, 1, lastRow - 1, V138_JOB_HEADERS.length).getValues()
+        );
+        migratedRows = repairResult.rows;
+      }
+      replaceSheetData(sheet, JOB_HEADERS, migratedRows, V138_JOB_HEADERS.length);
     } else if (headersMatch(header, JOB_HEADERS)) {
       if (settings.repair && lastRow > 1) {
         repairResult = repairCurrentJobRows(
           sheet.getRange(2, 1, lastRow - 1, JOB_HEADERS.length).getValues()
         );
-        if (repairResult.changed) {
+        if (repairResult.changed || repairResult.rows.length !== lastRow - 1) {
           replaceSheetData(sheet, JOB_HEADERS, repairResult.rows, JOB_HEADERS.length);
         }
       }
@@ -393,16 +429,39 @@ var SpotiSync = SpotiSync || {};
   }
 
   function normalizeJob(row, rowNumber) {
-    // A checkbox-only or presentation-only row is not a disabled job.
     if (!isConfiguredJobRow(row)) { return null; }
 
-    var enabled = normalizeBoolean(row[JOB_COL.ENABLED - 1]);
     var sourcePlaylist = ns.Core.trim(row[JOB_COL.SOURCE_PLAYLIST_ID - 1]);
-    var job = {
+    var targetPlaylist = ns.Core.trim(row[JOB_COL.TARGET_PLAYLIST_ID - 1]);
+    var sourceType = sourcePlaylist
+      ? ns.Constants.SOURCE_TYPES.PLAYLIST
+      : ns.Constants.SOURCE_TYPES.LIKED_SONGS;
+    var strategy = parseBehaviorLabel(row[JOB_COL.BEHAVIOR - 1]);
+    var intervalDays = parseFrequency(row[JOB_COL.FREQUENCY - 1]);
+    var sourceLabel = ns.Core.trim(row[JOB_COL.SOURCE - 1]);
+    var targetLabel = ns.Core.trim(row[JOB_COL.TARGET - 1]);
+
+    if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
+      sourcePlaylist = ns.Core.parsePlaylistId(sourcePlaylist);
+    } else {
+      sourcePlaylist = '';
+      sourceLabel = sourceLabel || 'Liked Songs';
+    }
+    targetPlaylist = ns.Core.parsePlaylistId(targetPlaylist);
+
+    return {
       rowNumber: rowNumber,
-      enabled: enabled,
+      enabled: normalizeBoolean(row[JOB_COL.ENABLED - 1]),
       name: ns.Core.trim(row[JOB_COL.NAME - 1]) || ('Job ' + rowNumber),
       jobId: ns.Core.trim(row[JOB_COL.ID - 1]) || ('row_' + rowNumber),
+      sourceType: sourceType,
+      sourcePlaylist: sourcePlaylist,
+      sourceLabel: sourceLabel || (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? 'Spotify playlist' : 'Liked Songs'),
+      targetPlaylist: targetPlaylist,
+      targetLabel: targetLabel || 'Spotify playlist',
+      strategy: strategy,
+      intervalDays: intervalDays,
+      heartbeatEnabled: heartbeatEnabledValue(row[JOB_COL.HEARTBEAT_ENABLED - 1]),
       lastAttempt: row[JOB_COL.LAST_ATTEMPT - 1] || null,
       lastSuccess: row[JOB_COL.LAST_SUCCESS - 1] || null,
       lastStatus: ns.Core.trim(row[JOB_COL.LAST_STATUS - 1]),
@@ -410,32 +469,6 @@ var SpotiSync = SpotiSync || {};
       lastRemoved: Number(row[JOB_COL.LAST_REMOVED - 1] || 0),
       lastError: ns.Core.trim(row[JOB_COL.LAST_ERROR - 1])
     };
-
-    if (!enabled) {
-      job.sourceType = '';
-      job.sourcePlaylist = sourcePlaylist;
-      job.targetPlaylist = ns.Core.trim(row[JOB_COL.TARGET_PLAYLIST_ID - 1]);
-      job.strategy = '';
-      job.intervalDays = 0;
-      return job;
-    }
-
-    // Source/Target visible cells are presentation-only. Hidden playlist IDs
-    // are authoritative for runtime source/target identity.
-    job.sourceType = sourcePlaylist
-      ? ns.Constants.SOURCE_TYPES.PLAYLIST
-      : ns.Constants.SOURCE_TYPES.LIKED_SONGS;
-    job.strategy = parseBehaviorLabel(row[JOB_COL.BEHAVIOR - 1]);
-    job.intervalDays = parseFrequency(row[JOB_COL.FREQUENCY - 1]);
-    job.sourcePlaylist = sourcePlaylist;
-    job.targetPlaylist = ns.Core.trim(row[JOB_COL.TARGET_PLAYLIST_ID - 1]);
-    if (job.sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
-      job.sourcePlaylist = ns.Core.parsePlaylistId(job.sourcePlaylist);
-    } else {
-      job.sourcePlaylist = '';
-    }
-    job.targetPlaylist = ns.Core.parsePlaylistId(job.targetPlaylist);
-    return job;
   }
 
   function parseJobRows(rows, startingRowNumber) {
@@ -447,11 +480,12 @@ var SpotiSync = SpotiSync || {};
         var job = normalizeJob(row, rowNumber);
         if (job) { result.jobs.push(job); }
       } catch (error) {
-        if (normalizeBoolean(row[JOB_COL.ENABLED - 1])) {
+        if (isConfiguredJobRow(row)) {
           result.errors.push({
             rowNumber: rowNumber,
             jobId: ns.Core.trim(row[JOB_COL.ID - 1]),
             name: ns.Core.trim(row[JOB_COL.NAME - 1]) || ('Job row ' + rowNumber),
+            enabled: normalizeBoolean(row[JOB_COL.ENABLED - 1]),
             strategy: ns.Core.trim(row[JOB_COL.BEHAVIOR - 1]),
             error: ns.Core.safeErrorMessage(error)
           });
@@ -461,17 +495,108 @@ var SpotiSync = SpotiSync || {};
     return result;
   }
 
-  function refreshViews() {
-    if (ns.SheetViews && ns.SheetViews.refreshAll) {
-      ns.SheetViews.refreshAll();
+  function findRowByJobId(jobId) {
+    var sheet = ensureJobsSheet();
+    var id = ns.Core.trim(jobId);
+    var lastRow = sheet.getLastRow();
+    var values;
+    var index;
+
+    if (!id || lastRow < 2) { return 0; }
+    values = sheet.getRange(2, JOB_COL.ID, lastRow - 1, 1).getValues();
+    for (index = 0; index < values.length; index += 1) {
+      if (ns.Core.trim(values[index][0]) === id) {
+        return index + 2;
+      }
     }
+    return 0;
   }
 
-  function refreshRunViews() {
-    if (!ns.SheetViews) { return; }
-    ns.SheetViews.refreshJobsStatus();
-    ns.SheetViews.refreshSchedule();
-    ns.SheetViews.refreshDashboard();
+  function getJobById(jobId) {
+    var id = ns.Core.trim(jobId);
+    var read = ns.SheetStore.getJobReadResult();
+    var job = read.jobs.filter(function (item) { return item.jobId === id; })[0];
+    var configError;
+    if (job) { return job; }
+    configError = read.errors.filter(function (item) { return item.jobId === id; })[0];
+    if (configError) {
+      throw new Error(configError.error);
+    }
+    throw new Error('Spoti Sync job not found.');
+  }
+
+  function upsertJob(config) {
+    var data = config || {};
+    var sheet = ensureJobsSheet();
+    var jobId = ns.Core.trim(data.jobId) || createJobId();
+    var rowNumber = data.jobId ? findRowByJobId(jobId) : 0;
+    var sourceType = ns.Core.trim(data.sourceType).toUpperCase();
+    var sourcePlaylistId = '';
+    var targetPlaylistId;
+    var strategy;
+    var intervalDays;
+    var name;
+    var sourceLabel;
+    var targetLabel;
+    var row;
+
+    ns.Core.assert(
+      [ns.Constants.SOURCE_TYPES.LIKED_SONGS, ns.Constants.SOURCE_TYPES.PLAYLIST].indexOf(sourceType) !== -1,
+      'Choose Liked Songs or a Spotify playlist as the source.'
+    );
+
+    strategy = BEHAVIOR_STRATEGIES.indexOf(data.strategy) !== -1
+      ? data.strategy
+      : parseBehaviorLabel(data.behavior);
+    intervalDays = parseFrequency(data.intervalDays);
+    targetPlaylistId = ns.Core.parsePlaylistId(data.targetPlaylistId);
+
+    if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
+      sourcePlaylistId = ns.Core.parsePlaylistId(data.sourcePlaylistId);
+    }
+
+    sourceLabel = ns.Core.trim(data.sourceLabel) ||
+      (sourceType === ns.Constants.SOURCE_TYPES.LIKED_SONGS ? 'Liked Songs' : 'Spotify playlist');
+    targetLabel = ns.Core.trim(data.targetLabel) || 'Spotify playlist';
+    name = ns.Core.trim(data.name) || (sourceLabel + ' → ' + targetLabel);
+
+    if (rowNumber) {
+      row = sheet.getRange(rowNumber, 1, 1, JOB_HEADERS.length).getValues()[0];
+    } else {
+      rowNumber = Math.max(sheet.getLastRow() + 1, 2);
+      row = new Array(JOB_HEADERS.length).fill('');
+      row[JOB_COL.ID - 1] = jobId;
+      row[JOB_COL.LAST_ADDED - 1] = 0;
+      row[JOB_COL.LAST_REMOVED - 1] = 0;
+    }
+
+    row[JOB_COL.ENABLED - 1] = data.enabled === true;
+    row[JOB_COL.NAME - 1] = name;
+    row[JOB_COL.SOURCE - 1] = sourceLabel;
+    row[JOB_COL.TARGET - 1] = targetLabel;
+    row[JOB_COL.BEHAVIOR - 1] = behaviorLabel(strategy);
+    row[JOB_COL.FREQUENCY - 1] = frequencyLabel(intervalDays);
+    row[JOB_COL.ID - 1] = jobId;
+    row[JOB_COL.SOURCE_PLAYLIST_ID - 1] = sourcePlaylistId;
+    row[JOB_COL.TARGET_PLAYLIST_ID - 1] = targetPlaylistId;
+    row[JOB_COL.HEARTBEAT_ENABLED - 1] = data.heartbeatEnabled !== false;
+
+    sheet.getRange(rowNumber, 1, 1, JOB_HEADERS.length).setValues([row]);
+    return normalizeJob(row, rowNumber);
+  }
+
+  function deleteJob(jobId) {
+    var sheet = ensureJobsSheet();
+    var rowNumber = findRowByJobId(jobId);
+    ns.Core.assert(rowNumber, 'Spoti Sync job not found.');
+    sheet.deleteRow(rowNumber);
+    return true;
+  }
+
+  function refreshSummary() {
+    if (ns.SheetViews && ns.SheetViews.refreshSummary) {
+      ns.SheetViews.refreshSummary();
+    }
   }
 
   ns.SheetStore = {
@@ -483,10 +608,13 @@ var SpotiSync = SpotiSync || {};
     frequencyPresets: frequencyPresets,
     frequencyLimits: frequencyLimits,
 
-    initialize: function () {
+    initialize: function (options) {
+      var settings = options || {};
       ensureJobsSheet({ repair: true });
       ensureActivitySheet();
-      refreshViews();
+      if (settings.render !== false && ns.SheetViews && ns.SheetViews.initializeWorkbook) {
+        ns.SheetViews.initializeWorkbook();
+      }
     },
 
     getJobReadResult: function () {
@@ -500,12 +628,17 @@ var SpotiSync = SpotiSync || {};
       return ns.SheetStore.getJobReadResult().jobs;
     },
 
+    getJobById: getJobById,
+    upsertJob: upsertJob,
+    deleteJob: deleteJob,
+
     isJobDue: function (job, now) {
       return ns.Core.isDueByCalendarDay(job.lastSuccess, job.intervalDays, now, timezone());
     },
 
     getSpreadsheetTimezone: timezone,
     getNextEligibleLabel: function (job, now) { return nextEligibleLabel(job, now || new Date()); },
+    getAutomationLabel: automationLabel,
 
     updateJobSuccess: function (job, summary) {
       var sheet = ensureJobsSheet();
@@ -553,18 +686,20 @@ var SpotiSync = SpotiSync || {};
         LAST_LIKED_COUNT: String(summary.likedCount || 0),
         LAST_RUN_WARNINGS: String((summary.warnings || []).length)
       });
-      refreshRunViews();
     },
 
-    refreshJobsStatus: function () { if (ns.SheetViews) { ns.SheetViews.refreshJobsStatus(); } },
-    refreshDashboard: function () { if (ns.SheetViews) { ns.SheetViews.refreshDashboard(); } },
-    refreshSchedule: function () { if (ns.SheetViews) { ns.SheetViews.refreshSchedule(); } },
-    refreshAllViews: refreshViews,
+    refreshSummary: refreshSummary,
+    refreshAllViews: function () {
+      if (ns.SheetViews && ns.SheetViews.refreshAll) {
+        ns.SheetViews.refreshAll();
+      }
+    },
 
     _ensureJobsSheet: ensureJobsSheet,
     _ensureActivitySheet: ensureActivitySheet,
     _jobColumns: JOB_COL,
     _normalizeBoolean: normalizeBoolean,
+    _heartbeatEnabledValue: heartbeatEnabledValue,
     _healthLabel: healthLabel,
     _behaviorLabel: behaviorLabel,
     _frequencyLabel: frequencyLabel,
@@ -574,7 +709,10 @@ var SpotiSync = SpotiSync || {};
     _normalizeJob: normalizeJob,
     _legacyJobToStoredRow: legacyJobToStoredRow,
     _repairCurrentJobRows: repairCurrentJobRows,
+    _replaceSheetData: replaceSheetData,
+    _findRowByJobId: findRowByJobId,
     _parseFrequency: parseFrequency,
-    _parseBehaviorLabel: parseBehaviorLabel
+    _parseBehaviorLabel: parseBehaviorLabel,
+    _v138JobHeaders: V138_JOB_HEADERS.slice()
   };
 })(SpotiSync);

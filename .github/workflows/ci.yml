@@ -23,11 +23,13 @@ jobs:
         run: node scripts/build.js
       - name: Run core tests
         run: node scripts/test.js
+      - name: Run v1.4 single-surface tests
+        run: node scripts/test-v14.js
       - name: Run sheet and scheduler checks
         run: node scripts/test-scheduler.js
-      - name: Run partial migration repair checks
+      - name: Run migration and storage checks
         run: node scripts/test-sheet-repair.js
-      - name: Run job editor tests
+      - name: Run app and job service tests
         run: node scripts/test-job-editor.js
       - name: Run playlist heartbeat tests
         run: node scripts/test-heartbeat.js

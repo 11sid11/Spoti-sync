@@ -14,26 +14,65 @@ var SpotiSync = SpotiSync || {};
     return ss;
   }
 
-  function getOrCreateSheet(name) {
-    var ss = spreadsheet();
-    var sheet = ss.getSheetByName(name);
-    if (sheet) { return sheet; }
-    if (name === ns.Constants.SHEETS.DASHBOARD) {
-      // A brand-new spreadsheet starts with one empty tab. Jobs/Activity may
-      // already have been created by the time views are rendered, so reuse
-      // the still-empty active tab instead of leaving an orphaned Sheet1.
-      var candidate = ss.getActiveSheet();
-      var reservedNames = Object.keys(ns.Constants.SHEETS).map(function (key) {
-        return ns.Constants.SHEETS[key];
-      });
-      if (candidate && reservedNames.indexOf(candidate.getName()) === -1 &&
-          candidate.getLastRow() === 0 && candidate.getLastColumn() === 1 &&
-          !candidate.getRange(1, 1).getValue()) {
-        candidate.setName(name);
-        return candidate;
-      }
+  function isEmptySheet(sheet) {
+    return sheet && sheet.getLastRow() === 0 && sheet.getLastColumn() === 1 &&
+      !sheet.getRange(1, 1).getValue();
+  }
+
+  function isManagedSummarySheet(sheet) {
+    if (!sheet) { return false; }
+    if (isEmptySheet(sheet)) { return true; }
+    return ns.Core.trim(sheet.getRange(1, 1).getValue()) === 'Spoti Sync';
+  }
+
+  function nextAvailableStatusName(ss) {
+    var base = 'Spoti Sync Status';
+    var name = base;
+    var suffix = 2;
+    while (ss.getSheetByName(name)) {
+      name = base + ' ' + suffix;
+      suffix += 1;
     }
-    return ss.insertSheet(name);
+    return name;
+  }
+
+  function ensureSummarySheet() {
+    var ss = spreadsheet();
+    var sheet = ss.getSheetByName(ns.Constants.SHEETS.SUMMARY);
+    var legacy = ss.getSheetByName(ns.Constants.SHEETS.DASHBOARD);
+    var candidate;
+    var reserved;
+
+    if (sheet && isManagedSummarySheet(sheet)) { return sheet; }
+
+    // Never clear an unrelated user sheet that happened to already be named
+    // "Spoti Sync". In that rare conflict, keep it intact and render status in
+    // the legacy Dashboard or a uniquely named fallback sheet.
+    if (legacy) {
+      if (!sheet) {
+        legacy.setName(ns.Constants.SHEETS.SUMMARY);
+      }
+      return legacy;
+    }
+
+    if (sheet) {
+      return ss.insertSheet(nextAvailableStatusName(ss));
+    }
+
+    candidate = ss.getActiveSheet();
+    reserved = [
+      ns.Constants.SHEETS.SUMMARY,
+      ns.Constants.SHEETS.DASHBOARD,
+      ns.Constants.SHEETS.JOBS,
+      ns.Constants.SHEETS.SCHEDULE,
+      ns.Constants.SHEETS.ACTIVITY
+    ];
+    if (candidate && reserved.indexOf(candidate.getName()) === -1 && isEmptySheet(candidate)) {
+      candidate.setName(ns.Constants.SHEETS.SUMMARY);
+      return candidate;
+    }
+
+    return ss.insertSheet(ns.Constants.SHEETS.SUMMARY);
   }
 
   function styleTableHeader(range) {
@@ -48,55 +87,9 @@ var SpotiSync = SpotiSync || {};
       .setFontWeight('bold').setFontSize(18).setVerticalAlignment('middle');
   }
 
-  function styleJobsSheet(sheet) {
-    var columns = ns.SheetStore._jobColumns;
-    var width = ns.SheetStore.jobHeaders.length;
-    var maxDataRows = Math.max(sheet.getMaxRows() - 1, 1);
-    var validationRows = Math.min(maxDataRows, Math.max(sheet.getLastRow() + 49, 50));
-    var behaviorOptions = ns.SheetStore.behaviorOptions();
-    var frequencyPresets = ns.SheetStore.frequencyPresets();
-    var frequencyLimits = ns.SheetStore.frequencyLimits();
-    var frequencyHelp = 'Choose a common schedule, or type Every N days (' +
-      frequencyLimits.min + '–' + frequencyLimits.max + '), for example Every 21 days.';
-    var checkbox = SpreadsheetApp.newDataValidation().requireCheckbox().setAllowInvalid(false).build();
-    var behavior = SpreadsheetApp.newDataValidation()
-      .requireValueInList(behaviorOptions, true).setAllowInvalid(false).build();
-    var frequency = SpreadsheetApp.newDataValidation()
-      .requireValueInList(frequencyPresets, true)
-      .setAllowInvalid(true)
-      .setHelpText(frequencyHelp)
-      .build();
-
-    sheet.setHiddenGridlines(true);
-    sheet.setFrozenRows(1);
-    sheet.setTabColor(COLORS.GREEN);
-    styleTableHeader(sheet.getRange(1, 1, 1, width));
-    sheet.setRowHeight(1, 32);
-
-    // Always remove legacy validation from the visible configuration columns first.
-    // Source/Target are presentation-only in v1.3.5+, while Behavior/Frequency
-    // retain their current validation. In v1.2 column F was Strategy, so clearing
-    // through Frequency also prevents stale MIRROR / APPEND rules from returning.
-    sheet.getRange(2, 1, maxDataRows, columns.FREQUENCY).clearDataValidations();
-    sheet.getRange(2, 1, validationRows, 1).setDataValidation(checkbox);
-    sheet.getRange(2, columns.BEHAVIOR, validationRows, 1).setDataValidation(behavior);
-    sheet.getRange(2, columns.FREQUENCY, validationRows, 1).setDataValidation(frequency);
-    sheet.getRange(1, columns.FREQUENCY).setNote(frequencyHelp);
-
-    sheet.getRange(2, columns.HEALTH, maxDataRows, 2).setBackground(COLORS.LIGHT);
-    sheet.setColumnWidth(columns.ENABLED, 74);
-    sheet.setColumnWidth(columns.NAME, 210);
-    sheet.setColumnWidth(columns.SOURCE, 205);
-    sheet.setColumnWidth(columns.TARGET, 205);
-    sheet.setColumnWidth(columns.BEHAVIOR, 135);
-    sheet.setColumnWidth(columns.FREQUENCY, 125);
-    sheet.setColumnWidth(columns.HEALTH, 150);
-    sheet.setColumnWidth(columns.NEXT, 130);
-    sheet.hideColumns(columns.ID, width - columns.ID + 1);
-  }
-
   function styleActivitySheet(sheet) {
     var width = ns.SheetStore.activityHeaders.length;
+    sheet.showSheet();
     sheet.setHiddenGridlines(true);
     sheet.setFrozenRows(1);
     sheet.setTabColor('#4285f4');
@@ -110,190 +103,150 @@ var SpotiSync = SpotiSync || {};
     }
   }
 
-  function refreshJobsStatus() {
-    var sheet = ns.SheetStore._ensureJobsSheet();
-    var columns = ns.SheetStore._jobColumns;
-    var lastRow = sheet.getLastRow();
-    styleJobsSheet(sheet);
-    if (ns.JobEditor && ns.JobEditor.applyFriendlyPlaylistLinks) {
-      ns.JobEditor.applyFriendlyPlaylistLinks();
+  function sourceSummary(job) {
+    if (job.sourceType === ns.Constants.SOURCE_TYPES.LIKED_SONGS) {
+      return 'Liked Songs';
     }
-    if (lastRow < 2) { return; }
-    var rows = sheet.getRange(2, 1, lastRow - 1, ns.SheetStore.jobHeaders.length).getValues();
-    var values = [];
-    var colors = [];
-    rows.forEach(function (row, index) {
-      var health;
-      var next;
-      var color = COLORS.MUTED;
-      try {
-        var job = ns.SheetStore._normalizeJob(row, index + 2);
-        health = job ? ns.SheetStore._healthLabel(job) : '';
-        next = job && job.enabled ? ns.SheetStore._nextEligibleLabel(job, new Date()) : (job ? '—' : '');
-        if (health.indexOf('✓') === 0) { color = COLORS.SUCCESS; }
-        if (health.indexOf('⚠') === 0) { color = COLORS.WARNING; }
-        if (health.indexOf('✕') === 0) { color = COLORS.ERROR; }
-      } catch (error) {
-        var enabled = ns.SheetStore._normalizeBoolean(row[columns.ENABLED - 1]);
-        health = enabled ? '✕ Configuration' : '○ Disabled';
-        next = enabled ? 'Fix job' : '—';
-        color = enabled ? COLORS.ERROR : COLORS.MUTED;
-      }
-      values.push([health, next]);
-      colors.push([color, COLORS.MUTED]);
-    });
-    sheet.getRange(2, columns.HEALTH, values.length, 2).setValues(values).setFontColors(colors);
+    return ns.Core.trim(job.sourceLabel) || 'Spotify playlist';
   }
 
-  function recentActivity(limit) {
-    var sheet = ns.SheetStore._ensureActivitySheet();
-    var lastRow = sheet.getLastRow();
-    var count = Math.min(Number(limit || 5), Math.max(lastRow - 1, 0));
-    if (!count) { return []; }
-    return sheet.getRange(lastRow - count + 1, 1, count, 7).getValues().reverse();
+  function targetSummary(job) {
+    return ns.Core.trim(job.targetLabel) || 'Spotify playlist';
   }
 
-  function nextJobInfo(jobs, now) {
-    var enabled = jobs.filter(function (job) { return job.enabled; });
-    if (!enabled.length) { return null; }
-    return enabled.map(function (job) {
-      var label = ns.SheetStore._nextEligibleLabel(job, now);
-      return {
-        job: job,
-        label: label,
-        ordinal: label === 'Ready now' || label === 'Due now' ? -1 : ns.Core.dateKeyToOrdinal(label)
-      };
-    }).sort(function (a, b) { return a.ordinal - b.ordinal; })[0];
+  function lastSyncLabel(job) {
+    return job.lastSuccess ? ns.SheetStore._formatTimestamp(job.lastSuccess, 'MMM d · h:mm a') : 'Never';
   }
 
-  function refreshDashboard() {
-    var sheet = getOrCreateSheet(ns.Constants.SHEETS.DASHBOARD);
+  function jobStatusLabel(job) {
+    return ns.SheetStore._healthLabel(job);
+  }
+
+  function refreshSummary() {
+    var sheet = ensureSummarySheet();
     var status = ns.Storage.getDocumentStatus();
     var connected = ns.Auth && ns.Auth.isConnected ? ns.Auth.isConnected() : false;
     var scheduler = ns.Scheduler && ns.Scheduler.getStatus ? ns.Scheduler.getStatus() : { enabled: false };
-    var update = ns.UpdateChecker && ns.UpdateChecker.getCachedStatus ? ns.UpdateChecker.getCachedStatus() : null;
     var read = ns.SheetStore.getJobReadResult();
-    var enabled = read.jobs.filter(function (job) { return job.enabled; });
-    var next = nextJobInfo(read.jobs, new Date());
-    var recent = recentActivity(5);
+    var automated = read.jobs.filter(function (job) { return job.enabled; });
+    var rows = read.jobs.map(function (job) {
+      return [
+        job.name,
+        sourceSummary(job),
+        targetSummary(job),
+        ns.SheetStore._behaviorLabel(job.strategy),
+        ns.SheetStore.getAutomationLabel(job),
+        lastSyncLabel(job),
+        jobStatusLabel(job)
+      ];
+    });
+    var errorRows = read.errors.map(function (error) {
+      return [
+        error.name, '—', '—', '—', error.enabled ? 'Needs attention' : 'Off',
+        'Never', '✕ Configuration'
+      ];
+    });
+    var allRows = rows.concat(errorRows);
+    var schedulerLabel = automated.length
+      ? (scheduler.enabled ? '● Running · ' + automated.length + ' job' + (automated.length === 1 ? '' : 's') : '⚠ Needs attention')
+      : '○ No automated jobs';
 
-    sheet.getRange('A1:F50').breakApart();
+    sheet.showSheet();
+    sheet.getRange('A1:G200').breakApart();
     sheet.clear();
     sheet.setHiddenGridlines(true);
     sheet.setTabColor(COLORS.GREEN);
-    styleTitle(sheet, 'A1:F1', 'Spoti Sync');
-    sheet.setRowHeight(1, 40);
-    sheet.getRange('A3:B3').setValues([['System', 'Status']]); styleTableHeader(sheet.getRange('A3:B3'));
-    sheet.getRange('A4:B7').setValues([
-      ['Spotify', connected ? '● Connected' : '○ Not connected'],
-      ['Scheduler', scheduler.enabled ? '● Running' : '○ Disabled'],
-      ['Version', ns.VERSION],
-      ['Updates', update ? ns.UpdateChecker.statusLabel(update) : 'Not checked']
-    ]);
-    sheet.getRange('D3:E3').setValues([['Automation', 'Latest']]); styleTableHeader(sheet.getRange('D3:E3'));
-    sheet.getRange('D4:E7').setValues([
-      ['Enabled jobs', enabled.length],
-      ['Last sync', status.LAST_RUN_AT ? ns.SheetStore._formatTimestamp(status.LAST_RUN_AT) : 'Never'],
-      ['Last result', status.LAST_RUN_STATUS || '—'],
-      ['Last changes', '+' + Number(status.LAST_RUN_ADDED || 0) + ' / -' + Number(status.LAST_RUN_REMOVED || 0)]
-    ]);
 
-    sheet.getRange('A9:F9').merge().setValue('Next automation').setFontWeight('bold').setFontColor(COLORS.MUTED);
-    if (read.errors.length) {
-      sheet.getRange('A10:F11').merge().setValue('Fix ' + read.errors.length + ' enabled job configuration error' +
-        (read.errors.length === 1 ? '' : 's') + ' before the scheduler can run them.')
-        .setFontColor(COLORS.ERROR).setWrap(true);
-    } else if (next) {
-      sheet.getRange('A10:F10').setValues([[
-        next.job.name, ns.SheetStore._behaviorLabel(next.job.strategy),
-        ns.SheetStore._frequencyLabel(next.job.intervalDays), next.label,
-        scheduler.enabled ? 'Scheduled' : 'Scheduler off', ''
-      ]]);
-      sheet.getRange('A10').setFontWeight('bold');
+    styleTitle(sheet, 'A1:G1', 'Spoti Sync');
+    sheet.setRowHeight(1, 40);
+
+    sheet.getRange('A3:G3').merge()
+      .setValue('Manage Spoti Sync from Spoti Sync → Open Spoti Sync. This sheet is status-only.')
+      .setFontColor(COLORS.MUTED).setWrap(true);
+
+    sheet.getRange('A5:B5').setValues([['System', 'Status']]);
+    styleTableHeader(sheet.getRange('A5:B5'));
+    sheet.getRange('A6:B9').setValues([
+      ['Spotify', connected ? '● Connected' : '○ Not connected'],
+      ['Automation', schedulerLabel],
+      ['Last sync', status.LAST_RUN_AT ? ns.SheetStore._formatTimestamp(status.LAST_RUN_AT) : 'Never'],
+      ['Version', ns.VERSION]
+    ]);
+    sheet.getRange('A6:A9').setFontWeight('bold');
+    sheet.getRange('B6').setFontColor(connected ? COLORS.SUCCESS : COLORS.ERROR);
+    sheet.getRange('B7').setFontColor(
+      automated.length && !scheduler.enabled ? COLORS.WARNING : (scheduler.enabled ? COLORS.SUCCESS : COLORS.MUTED)
+    );
+
+    sheet.getRange('A11:G11').setValues([[
+      'Job', 'Source', 'Target', 'Behavior', 'Automation', 'Last sync', 'Status'
+    ]]);
+    styleTableHeader(sheet.getRange('A11:G11'));
+
+    if (allRows.length) {
+      var statusColors = allRows.map(function (row) {
+        var value = String(row[6]);
+        if (value.indexOf('✓') === 0) { return [COLORS.SUCCESS]; }
+        if (value.indexOf('⚠') === 0) { return [COLORS.WARNING]; }
+        if (value.indexOf('✕') === 0) { return [COLORS.ERROR]; }
+        return [COLORS.MUTED];
+      });
+      sheet.getRange(12, 1, allRows.length, 7).setValues(allRows).setWrap(true);
+      sheet.getRange(12, 7, statusColors.length, 1).setFontColors(statusColors);
     } else {
-      sheet.getRange('A10:F10').merge().setValue('No enabled jobs yet. Use Spoti Sync → Add Sync Job.')
+      sheet.getRange('A12:G12').merge()
+        .setValue('No jobs yet. Open Spoti Sync and choose + Add job.')
         .setFontColor(COLORS.MUTED);
     }
 
-    sheet.getRange('A13:F13').setValues([['Recent activity', 'Result', 'Added', 'Removed', 'When', 'Details']]);
-    styleTableHeader(sheet.getRange('A13:F13'));
-    if (recent.length) {
-      sheet.getRange(14, 1, recent.length, 6).setValues(recent.map(function (row) {
-        return [row[1], row[2], Number(row[3] || 0), Number(row[4] || 0),
-          row[0] ? ns.SheetStore._formatTimestamp(row[0]) : '', row[6] || ''];
-      })).setWrap(true);
-    } else {
-      sheet.getRange('A14:F14').merge().setValue('No sync activity yet.').setFontColor(COLORS.MUTED);
-    }
-
-    sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 145); sheet.setColumnWidth(3, 90);
-    sheet.setColumnWidth(4, 155); sheet.setColumnWidth(5, 175); sheet.setColumnWidth(6, 320);
-    sheet.getRange('A3:F20').setVerticalAlignment('middle');
-    sheet.getRange('A4:A7').setFontWeight('bold'); sheet.getRange('D4:D7').setFontWeight('bold');
-    sheet.getRange('B4').setFontColor(connected ? COLORS.SUCCESS : COLORS.ERROR);
-    sheet.getRange('B5').setFontColor(scheduler.enabled ? COLORS.SUCCESS : COLORS.WARNING);
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 210);
+    sheet.setColumnWidth(2, 190);
+    sheet.setColumnWidth(3, 190);
+    sheet.setColumnWidth(4, 130);
+    sheet.setColumnWidth(5, 130);
+    sheet.setColumnWidth(6, 150);
+    sheet.setColumnWidth(7, 150);
+    sheet.getRange('A1:G80').setVerticalAlignment('middle');
   }
 
-  function refreshSchedule() {
-    var sheet = getOrCreateSheet(ns.Constants.SHEETS.SCHEDULE);
-    var scheduler = ns.Scheduler && ns.Scheduler.getStatus ? ns.Scheduler.getStatus() :
-      { enabled: false, triggerCount: 0, schedule: 'Not configured', lastCheckAt: '', lastCheckStatus: '' };
-    var update = ns.UpdateChecker && ns.UpdateChecker.getCachedStatus ? ns.UpdateChecker.getCachedStatus() : null;
-    var read = ns.SheetStore.getJobReadResult();
-    var jobs = read.jobs.filter(function (job) { return job.enabled; });
-    var now = new Date();
+  function hideInternalSheets() {
+    var ss = spreadsheet();
+    var summary = ensureSummarySheet();
+    var activity = ns.SheetStore._ensureActivitySheet();
+    var jobs = ss.getSheetByName(ns.Constants.SHEETS.JOBS);
+    var schedule = ss.getSheetByName(ns.Constants.SHEETS.SCHEDULE);
 
-    sheet.getRange('A1:F100').breakApart();
-    sheet.clear();
-    sheet.setHiddenGridlines(true);
-    sheet.setTabColor('#34a853');
-    styleTitle(sheet, 'A1:F1', 'Automation Schedule');
-    sheet.setRowHeight(1, 40);
-    sheet.getRange('A3:B3').setValues([['Scheduler', scheduler.enabled ? '● Enabled' : '○ Disabled']]);
-    styleTableHeader(sheet.getRange('A3:B3'));
-    sheet.getRange('A4:B10').setValues([
-      ['Schedule', scheduler.schedule || '—'], ['Runs on', 'Google Apps Script cloud'],
-      ['Trigger count', Number(scheduler.triggerCount || 0)],
-      ['Last scheduler check', scheduler.lastCheckAt ? ns.SheetStore._formatTimestamp(scheduler.lastCheckAt) : 'Never'],
-      ['Last check status', scheduler.lastCheckStatus || '—'], ['Spoti Sync version', ns.VERSION],
-      ['Updates', update ? ns.UpdateChecker.statusLabel(update) : 'Not checked']
-    ]);
-    sheet.getRange('A4:A10').setFontWeight('bold');
-    sheet.getRange('B3').setFontColor(scheduler.enabled ? COLORS.SUCCESS : COLORS.WARNING);
-    sheet.getRange('A12:F12').setValues([['Upcoming job', 'Behavior', 'Frequency', 'Last success', 'Next eligible', 'State']]);
-    styleTableHeader(sheet.getRange('A12:F12'));
+    summary.showSheet();
+    activity.showSheet();
 
-    if (jobs.length) {
-      var rows = jobs.map(function (job) {
-        var next = ns.SheetStore._nextEligibleLabel(job, now);
-        return {
-          ordinal: next === 'Due now' || next === 'Ready now' ? -1 : ns.Core.dateKeyToOrdinal(next),
-          values: [job.name, ns.SheetStore._behaviorLabel(job.strategy), ns.SheetStore._frequencyLabel(job.intervalDays),
-            job.lastSuccess ? ns.SheetStore._formatTimestamp(job.lastSuccess, 'MMM d · h:mm a') : 'Never',
-            next, next === 'Due now' || next === 'Ready now' ? '● Ready' : '○ Waiting']
-        };
-      }).sort(function (a, b) { return a.ordinal - b.ordinal; }).map(function (item) { return item.values; });
-      sheet.getRange(13, 1, rows.length, 6).setValues(rows);
-    } else {
-      sheet.getRange('A13:F13').merge().setValue(read.errors.length ?
-        'Fix enabled job configuration errors in Jobs.' : 'No enabled jobs.')
-        .setFontColor(read.errors.length ? COLORS.ERROR : COLORS.MUTED);
+    if (jobs && !jobs.isSheetHidden()) {
+      if (ss.getActiveSheet().getSheetId() === jobs.getSheetId()) {
+        ss.setActiveSheet(summary);
+      }
+      jobs.hideSheet();
     }
-    sheet.setColumnWidth(1, 210); sheet.setColumnWidth(2, 135); sheet.setColumnWidth(3, 125);
-    sheet.setColumnWidth(4, 165); sheet.setColumnWidth(5, 130); sheet.setColumnWidth(6, 110);
-    sheet.getRange('A1:F40').setVerticalAlignment('middle').setWrap(true);
+
+    if (schedule && !schedule.isSheetHidden()) {
+      if (ss.getActiveSheet().getSheetId() === schedule.getSheetId()) {
+        ss.setActiveSheet(summary);
+      }
+      schedule.hideSheet();
+    }
+  }
+
+  function initializeWorkbook() {
+    var activity = ns.SheetStore._ensureActivitySheet();
+    styleActivitySheet(activity);
+    refreshSummary();
+    hideInternalSheets();
   }
 
   ns.SheetViews = {
-    refreshJobsStatus: refreshJobsStatus,
-    refreshDashboard: refreshDashboard,
-    refreshSchedule: refreshSchedule,
-    refreshAll: function () {
-      var activity = ns.SheetStore._ensureActivitySheet();
-      styleActivitySheet(activity);
-      refreshJobsStatus();
-      refreshSchedule();
-      refreshDashboard();
-    }
+    initializeWorkbook: initializeWorkbook,
+    refreshSummary: refreshSummary,
+    hideInternalSheets: hideInternalSheets,
+    refreshAll: initializeWorkbook,
+    _ensureSummarySheet: ensureSummarySheet
   };
 })(SpotiSync);

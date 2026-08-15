@@ -89,8 +89,8 @@ var SpotiSync = SpotiSync || {};
           throw new Error('Spotify authorization was not completed: ' + params.error);
         }
         ns.Core.assert(params.code, 'Spotify callback did not include an authorization code.');
-        ns.Core.assert(verifier, 'PKCE verifier is missing. Start Spotify authorization again from the Sheet.');
-        ns.Core.assert(clientId, 'Spotify Client ID is missing. Start setup again.');
+        ns.Core.assert(verifier, 'PKCE verifier is missing. Start Spotify authorization again from Spoti Sync.');
+        ns.Core.assert(clientId, 'Spotify Client ID is missing. Open Spoti Sync and connect Spotify again.');
 
         tokenResponse = fetchToken({
           grant_type: 'authorization_code',
@@ -133,7 +133,7 @@ var SpotiSync = SpotiSync || {};
       var tokenResponse;
 
       if (!clientId || !tokenState.refreshToken) {
-        var disconnected = new Error('Spotify is not connected. Open Spoti Sync → Setup and authorize Spotify.');
+        var disconnected = new Error('Spotify is not connected. Choose Spoti Sync → Open Spoti Sync and authorize Spotify.');
         disconnected.code = 'SPOTIFY_NOT_CONNECTED';
         throw disconnected;
       }
@@ -149,7 +149,7 @@ var SpotiSync = SpotiSync || {};
       } catch (error) {
         if (error.spotifyCode === 'invalid_grant') {
           ns.Storage.clearSpotifyAuthorization(true);
-          var reauth = new Error('Spotify authorization expired or was revoked. Reconnect Spotify from Spoti Sync → Setup.');
+          var reauth = new Error('Spotify authorization expired or was revoked. Choose Spoti Sync → Open Spoti Sync and reconnect Spotify.');
           reauth.code = 'SPOTIFY_REAUTH_REQUIRED';
           throw reauth;
         }
