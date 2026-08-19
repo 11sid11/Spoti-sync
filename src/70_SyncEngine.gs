@@ -94,13 +94,33 @@ var SpotiSync = SpotiSync || {};
     return errors.filter(function (item) { return item.enabled; });
   }
 
+  function isDueInDispatcher(job, options, now) {
+    var opts = options || {};
+    var current = now || new Date();
+
+    if (!ns.SheetStore.isJobDue(job, current)) {
+      return false;
+    }
+
+    if (opts.schedulerMode === 'HOURLY' &&
+        job.frequencyUnit === ns.Constants.FREQUENCY_UNITS.DAY) {
+      return Number(Utilities.formatDate(
+        current,
+        ns.SheetStore.getSpreadsheetTimezone(),
+        'H'
+      )) === ns.Constants.DEFAULT_SCHEDULER_HOUR;
+    }
+
+    return true;
+  }
+
   function matchingJobs(jobs, options, now) {
     var opts = options || {};
     if (opts.jobId) {
       return jobs.filter(function (job) { return job.jobId === opts.jobId; });
     }
     return jobs.filter(function (job) {
-      return job.enabled && (!opts.dueOnly || ns.SheetStore.isJobDue(job, now));
+      return job.enabled && (!opts.dueOnly || isDueInDispatcher(job, opts, now));
     });
   }
 
@@ -263,9 +283,14 @@ var SpotiSync = SpotiSync || {};
       });
     },
 
-    runDue: function () {
+    runDue: function (options) {
+      var settings = options || {};
       return ns.SyncEngine.withWriteLock(function () {
-        return runInternal({ dueOnly: true, write: true });
+        return runInternal({
+          dueOnly: true,
+          write: true,
+          schedulerMode: settings.schedulerMode || ''
+        });
       });
     },
 
@@ -283,6 +308,7 @@ var SpotiSync = SpotiSync || {};
 
     _executeJob: executeJob,
     _planJob: planJob,
+    _isDueInDispatcher: isDueInDispatcher,
     _runInternal: runInternal
   };
 })(SpotiSync);
