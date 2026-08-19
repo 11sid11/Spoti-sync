@@ -38,7 +38,8 @@ var SpotiSync = SpotiSync || {};
   });
 
   var FREQUENCY_PRESET_DAYS = Object.freeze([1, 2, 3, 7, 10, 14, 30, 60, 90]);
-  var FREQUENCY_LIMITS = Object.freeze({ MIN: 1, MAX: 3650 });
+  var DAY_FREQUENCY_LIMITS = Object.freeze({ MIN: 1, MAX: 3650 });
+  var HOUR_FREQUENCY_LIMITS = Object.freeze({ MIN: 1, MAX: 23 });
   var BEHAVIOR_STRATEGIES = Object.freeze([
     ns.Constants.STRATEGIES.MIRROR,
     ns.Constants.STRATEGIES.APPEND
@@ -131,43 +132,100 @@ var SpotiSync = SpotiSync || {};
     throw new Error('Behavior must be Exact Mirror or Append Only.');
   }
 
-  function frequencyLabel(intervalDays) {
-    var days = Number(intervalDays);
-    return days === 1 ? 'Daily' : 'Every ' + days + ' days';
+  function frequencyLabel(interval, unit) {
+    var value = Number(interval);
+    var frequencyUnit = unit || ns.Constants.FREQUENCY_UNITS.DAY;
+
+    if (frequencyUnit === ns.Constants.FREQUENCY_UNITS.HOUR) {
+      return value === 1 ? 'Hourly' : 'Every ' + value + ' hours';
+    }
+    return value === 1 ? 'Daily' : 'Every ' + value + ' days';
   }
 
   function frequencyPresets() {
-    return FREQUENCY_PRESET_DAYS.map(frequencyLabel);
+    return FREQUENCY_PRESET_DAYS.map(function (days) {
+      return frequencyLabel(days, ns.Constants.FREQUENCY_UNITS.DAY);
+    });
   }
 
   function frequencyLimits() {
-    return { min: FREQUENCY_LIMITS.MIN, max: FREQUENCY_LIMITS.MAX };
+    return {
+      min: DAY_FREQUENCY_LIMITS.MIN,
+      max: DAY_FREQUENCY_LIMITS.MAX,
+      hours: { min: HOUR_FREQUENCY_LIMITS.MIN, max: HOUR_FREQUENCY_LIMITS.MAX },
+      days: { min: DAY_FREQUENCY_LIMITS.MIN, max: DAY_FREQUENCY_LIMITS.MAX }
+    };
   }
 
   function parseFrequency(value) {
     var normalized = ns.Core.trim(value);
     var match;
-    var days;
+    var interval;
+    var unit;
 
-    if (/^daily$/i.test(normalized)) {
-      return 1;
+    if (/^hourly$/i.test(normalized)) {
+      interval = 1;
+      unit = ns.Constants.FREQUENCY_UNITS.HOUR;
+    } else if (/^daily$/i.test(normalized)) {
+      interval = 1;
+      unit = ns.Constants.FREQUENCY_UNITS.DAY;
+    } else {
+      match = normalized.match(/^every\s+(\d+)\s+hours?$/i);
+      if (match) {
+        interval = Number(match[1]);
+        unit = ns.Constants.FREQUENCY_UNITS.HOUR;
+      } else {
+        match = normalized.match(/^every\s+(\d+)\s+days?$/i);
+        if (match) {
+          interval = Number(match[1]);
+          unit = ns.Constants.FREQUENCY_UNITS.DAY;
+        } else if (/^\d+$/.test(normalized)) {
+          // Numeric values are accepted only for legacy/internal day-based callers.
+          interval = Number(normalized);
+          unit = ns.Constants.FREQUENCY_UNITS.DAY;
+        }
+      }
     }
-    match = normalized.match(/^every\s+(\d+)\s+days?$/i);
-    days = match ? Number(match[1]) : Number(normalized);
-    if (!Number.isInteger(days) || days < FREQUENCY_LIMITS.MIN || days > FREQUENCY_LIMITS.MAX) {
+
+    if (unit === ns.Constants.FREQUENCY_UNITS.HOUR) {
+      if (!Number.isInteger(interval) || interval < HOUR_FREQUENCY_LIMITS.MIN || interval > HOUR_FREQUENCY_LIMITS.MAX) {
+        throw new Error(
+          'Hourly frequency must be Hourly or Every N hours, from ' + HOUR_FREQUENCY_LIMITS.MIN +
+          ' to ' + HOUR_FREQUENCY_LIMITS.MAX + ' hours. Use Daily for 24 hours.'
+        );
+      }
+    } else if (unit === ns.Constants.FREQUENCY_UNITS.DAY) {
+      if (!Number.isInteger(interval) || interval < DAY_FREQUENCY_LIMITS.MIN || interval > DAY_FREQUENCY_LIMITS.MAX) {
+        throw new Error(
+          'Frequency must be Daily or Every N days, from ' + DAY_FREQUENCY_LIMITS.MIN +
+          ' to ' + DAY_FREQUENCY_LIMITS.MAX + ' days.'
+        );
+      }
+    } else {
       throw new Error(
-        'Frequency must be Daily or Every N days, from ' + FREQUENCY_LIMITS.MIN +
-        ' to ' + FREQUENCY_LIMITS.MAX + ' days.'
+        'Frequency must be Hourly, Every N hours, Daily, or Every N days.'
       );
     }
-    return days;
+
+    return {
+      unit: unit,
+      interval: interval,
+      label: frequencyLabel(interval, unit)
+    };
+  }
+
+  function jobFrequency(job) {
+    var unit = job.frequencyUnit || ns.Constants.FREQUENCY_UNITS.DAY;
+    var interval = Number(job.frequencyInterval ||
+      (unit === ns.Constants.FREQUENCY_UNITS.HOUR ? job.intervalHours : job.intervalDays) || 1);
+    return { unit: unit, interval: interval, label: frequencyLabel(interval, unit) };
   }
 
   function automationLabel(job) {
     if (!job.enabled) {
       return 'Off';
     }
-    return frequencyLabel(job.intervalDays);
+    return jobFrequency(job).label;
   }
 
   function dateKeyFromOrdinal(ordinal) {
@@ -179,6 +237,8 @@ var SpotiSync = SpotiSync || {};
     var current = now || new Date();
     var last;
     var dueOrdinal;
+    var frequency;
+    var dueAt;
 
     if (!job.enabled) {
       return '—';
@@ -190,7 +250,17 @@ var SpotiSync = SpotiSync || {};
     if (isNaN(last.getTime())) {
       return 'Ready now';
     }
-    dueOrdinal = ns.Core.calendarDayOrdinal(last, tz) + job.intervalDays;
+
+    frequency = jobFrequency(job);
+    if (frequency.unit === ns.Constants.FREQUENCY_UNITS.HOUR) {
+      dueAt = new Date(last.getTime() + frequency.interval * 60 * 60 * 1000);
+      if (dueAt.getTime() <= current.getTime()) {
+        return 'Due now';
+      }
+      return formatTimestamp(dueAt, 'MMM d · h:mm a');
+    }
+
+    dueOrdinal = ns.Core.calendarDayOrdinal(last, tz) + frequency.interval;
     if (dueOrdinal <= ns.Core.calendarDayOrdinal(current, tz)) {
       return 'Due now';
     }
@@ -241,7 +311,9 @@ var SpotiSync = SpotiSync || {};
       legacySourceLabel(sourceType),
       ns.Core.trim(row[4]) || 'Spotify playlist',
       behaviorLabel(strategy),
-      Number.isInteger(intervalDays) && intervalDays > 0 ? frequencyLabel(intervalDays) : ns.Core.trim(row[6]),
+      Number.isInteger(intervalDays) && intervalDays > 0
+        ? frequencyLabel(intervalDays, ns.Constants.FREQUENCY_UNITS.DAY)
+        : ns.Core.trim(row[6]),
       '', '', createJobId(),
       sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST ? recoverLegacyPlaylistId(row[3]) : '',
       recoverLegacyPlaylistId(row[4]),
@@ -273,7 +345,7 @@ var SpotiSync = SpotiSync || {};
     if ([ns.Constants.STRATEGIES.MIRROR, ns.Constants.STRATEGIES.APPEND].indexOf(strategy) === -1) {
       return false;
     }
-    if (!Number.isInteger(intervalDays) || intervalDays < FREQUENCY_LIMITS.MIN || intervalDays > FREQUENCY_LIMITS.MAX) {
+    if (!Number.isInteger(intervalDays) || intervalDays < DAY_FREQUENCY_LIMITS.MIN || intervalDays > DAY_FREQUENCY_LIMITS.MAX) {
       return false;
     }
 
@@ -437,7 +509,7 @@ var SpotiSync = SpotiSync || {};
       ? ns.Constants.SOURCE_TYPES.PLAYLIST
       : ns.Constants.SOURCE_TYPES.LIKED_SONGS;
     var strategy = parseBehaviorLabel(row[JOB_COL.BEHAVIOR - 1]);
-    var intervalDays = parseFrequency(row[JOB_COL.FREQUENCY - 1]);
+    var frequency = parseFrequency(row[JOB_COL.FREQUENCY - 1]);
     var sourceLabel = ns.Core.trim(row[JOB_COL.SOURCE - 1]);
     var targetLabel = ns.Core.trim(row[JOB_COL.TARGET - 1]);
 
@@ -460,7 +532,11 @@ var SpotiSync = SpotiSync || {};
       targetPlaylist: targetPlaylist,
       targetLabel: targetLabel || 'Spotify playlist',
       strategy: strategy,
-      intervalDays: intervalDays,
+      frequencyUnit: frequency.unit,
+      frequencyInterval: frequency.interval,
+      frequencyLabel: frequency.label,
+      intervalDays: frequency.unit === ns.Constants.FREQUENCY_UNITS.DAY ? frequency.interval : null,
+      intervalHours: frequency.unit === ns.Constants.FREQUENCY_UNITS.HOUR ? frequency.interval : null,
       heartbeatEnabled: heartbeatEnabledValue(row[JOB_COL.HEARTBEAT_ENABLED - 1]),
       lastAttempt: row[JOB_COL.LAST_ATTEMPT - 1] || null,
       lastSuccess: row[JOB_COL.LAST_SUCCESS - 1] || null,
@@ -525,6 +601,16 @@ var SpotiSync = SpotiSync || {};
     throw new Error('Spoti Sync job not found.');
   }
 
+  function frequencyFromConfig(data) {
+    if (ns.Core.trim(data.frequency)) {
+      return parseFrequency(data.frequency);
+    }
+    if (data.intervalHours !== undefined && data.intervalHours !== null && data.intervalHours !== '') {
+      return parseFrequency(frequencyLabel(Number(data.intervalHours), ns.Constants.FREQUENCY_UNITS.HOUR));
+    }
+    return parseFrequency(frequencyLabel(Number(data.intervalDays), ns.Constants.FREQUENCY_UNITS.DAY));
+  }
+
   function upsertJob(config) {
     var data = config || {};
     var sheet = ensureJobsSheet();
@@ -534,7 +620,7 @@ var SpotiSync = SpotiSync || {};
     var sourcePlaylistId = '';
     var targetPlaylistId;
     var strategy;
-    var intervalDays;
+    var frequency;
     var name;
     var sourceLabel;
     var targetLabel;
@@ -548,7 +634,7 @@ var SpotiSync = SpotiSync || {};
     strategy = BEHAVIOR_STRATEGIES.indexOf(data.strategy) !== -1
       ? data.strategy
       : parseBehaviorLabel(data.behavior);
-    intervalDays = parseFrequency(data.intervalDays);
+    frequency = frequencyFromConfig(data);
     targetPlaylistId = ns.Core.parsePlaylistId(data.targetPlaylistId);
 
     if (sourceType === ns.Constants.SOURCE_TYPES.PLAYLIST) {
@@ -575,7 +661,7 @@ var SpotiSync = SpotiSync || {};
     row[JOB_COL.SOURCE - 1] = sourceLabel;
     row[JOB_COL.TARGET - 1] = targetLabel;
     row[JOB_COL.BEHAVIOR - 1] = behaviorLabel(strategy);
-    row[JOB_COL.FREQUENCY - 1] = frequencyLabel(intervalDays);
+    row[JOB_COL.FREQUENCY - 1] = frequency.label;
     row[JOB_COL.ID - 1] = jobId;
     row[JOB_COL.SOURCE_PLAYLIST_ID - 1] = sourcePlaylistId;
     row[JOB_COL.TARGET_PLAYLIST_ID - 1] = targetPlaylistId;
@@ -607,6 +693,8 @@ var SpotiSync = SpotiSync || {};
     behaviorOptions: behaviorOptions,
     frequencyPresets: frequencyPresets,
     frequencyLimits: frequencyLimits,
+    parseFrequency: parseFrequency,
+    formatFrequency: frequencyLabel,
 
     initialize: function (options) {
       var settings = options || {};
@@ -633,7 +721,11 @@ var SpotiSync = SpotiSync || {};
     deleteJob: deleteJob,
 
     isJobDue: function (job, now) {
-      return ns.Core.isDueByCalendarDay(job.lastSuccess, job.intervalDays, now, timezone());
+      var frequency = jobFrequency(job);
+      if (frequency.unit === ns.Constants.FREQUENCY_UNITS.HOUR) {
+        return ns.Core.isDueByElapsedHours(job.lastSuccess, frequency.interval, now || new Date());
+      }
+      return ns.Core.isDueByCalendarDay(job.lastSuccess, frequency.interval, now || new Date(), timezone());
     },
 
     getSpreadsheetTimezone: timezone,
