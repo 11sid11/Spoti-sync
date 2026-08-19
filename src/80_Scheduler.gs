@@ -183,7 +183,8 @@ var SpotiSync = SpotiSync || {};
 
     runDue: function () {
       try {
-        var result = ns.SyncEngine.runDue();
+        var mode = storedMode(schedulerTriggers());
+        var result = ns.SyncEngine.runDue({ schedulerMode: mode });
         recordSchedulerCheck(result.status || 'Success', null);
         checkForUpdatesBestEffort();
         if (result.status !== 'No jobs due') {
