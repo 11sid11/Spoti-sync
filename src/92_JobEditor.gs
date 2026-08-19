@@ -8,8 +8,10 @@ var SpotiSync = SpotiSync || {};
   var NAME_PROPERTY_PREFIX = 'PLAYLIST_NAME_';
   var AUTOMATION = Object.freeze({
     OFF: 'OFF',
+    HOURLY: 'HOURLY',
+    HOURS: 'HOURS',
     DAILY: 'DAILY',
-    INTERVAL: 'INTERVAL'
+    DAYS: 'DAYS'
   });
 
   function normalizePlaylist(playlist) {
@@ -142,10 +144,17 @@ var SpotiSync = SpotiSync || {};
   }
 
   function automationForJob(job) {
+    var unit = job.frequencyUnit || ns.Constants.FREQUENCY_UNITS.DAY;
+    var interval = Number(job.frequencyInterval ||
+      (unit === ns.Constants.FREQUENCY_UNITS.HOUR ? job.intervalHours : job.intervalDays) || 1);
+
     if (!job.enabled) {
       return AUTOMATION.OFF;
     }
-    return job.intervalDays === 1 ? AUTOMATION.DAILY : AUTOMATION.INTERVAL;
+    if (unit === ns.Constants.FREQUENCY_UNITS.HOUR) {
+      return interval === 1 ? AUTOMATION.HOURLY : AUTOMATION.HOURS;
+    }
+    return interval === 1 ? AUTOMATION.DAILY : AUTOMATION.DAYS;
   }
 
   function automationLabel(job) {
@@ -172,7 +181,10 @@ var SpotiSync = SpotiSync || {};
       behavior: ns.SheetStore._behaviorLabel(job.strategy),
       automation: automationLabel(job),
       automated: job.enabled,
+      frequencyUnit: job.frequencyUnit,
+      frequencyInterval: job.frequencyInterval,
       intervalDays: job.intervalDays,
+      intervalHours: job.intervalHours,
       heartbeatEnabled: job.heartbeatEnabled !== false,
       lastSuccess: job.lastSuccess ? ns.SheetStore._formatTimestamp(job.lastSuccess) : 'Never',
       lastStatus: job.lastStatus || '',
@@ -198,6 +210,7 @@ var SpotiSync = SpotiSync || {};
       clientIdHint: clientId ? ('Configured: …' + clientId.slice(-6)) : '',
       automation: {
         enabled: scheduler.enabled,
+        mode: scheduler.mode || '',
         triggerCount: scheduler.triggerCount,
         automatedJobs: automatedJobs,
         lastCheckAt: scheduler.lastCheckAt || '',
@@ -245,7 +258,9 @@ var SpotiSync = SpotiSync || {};
         targetName: '',
         behavior: ns.SheetStore._behaviorLabel(ns.Constants.STRATEGIES.MIRROR),
         automation: AUTOMATION.DAILY,
+        frequency: 'Daily',
         intervalDays: 1,
+        intervalHours: 1,
         heartbeatEnabled: true
       };
     }
@@ -260,7 +275,9 @@ var SpotiSync = SpotiSync || {};
       targetName: targetName(job),
       behavior: ns.SheetStore._behaviorLabel(job.strategy),
       automation: automationForJob(job),
-      intervalDays: job.intervalDays,
+      frequency: job.frequencyLabel || ns.SheetStore.getAutomationLabel(job),
+      intervalDays: job.intervalDays || 1,
+      intervalHours: job.intervalHours || 1,
       heartbeatEnabled: job.heartbeatEnabled !== false
     };
   }
@@ -291,30 +308,45 @@ var SpotiSync = SpotiSync || {};
       frequencyLimits: ns.SheetStore.frequencyLimits(),
       automationOptions: [
         { value: AUTOMATION.OFF, label: 'Off' },
+        { value: AUTOMATION.HOURLY, label: 'Hourly' },
+        { value: AUTOMATION.HOURS, label: 'Every N hours', intervalUnit: 'hours' },
         { value: AUTOMATION.DAILY, label: 'Daily' },
-        { value: AUTOMATION.INTERVAL, label: 'Every N days' }
+        { value: AUTOMATION.DAYS, label: 'Every N days', intervalUnit: 'days' }
       ]
     };
   }
 
-  function intervalForPayload(data) {
+  function frequencyForPayload(data) {
     var mode = ns.Core.trim(data.automation).toUpperCase();
-    var requested;
+    var existing;
 
     if (mode === AUTOMATION.OFF) {
-      requested = Number(data.intervalDays || 1);
-      if (!Number.isInteger(requested) || requested < 1) {
-        requested = 1;
+      existing = ns.Core.trim(data.existingFrequency) || 'Daily';
+      try {
+        return ns.SheetStore.parseFrequency(existing);
+      } catch (ignored) {
+        return ns.SheetStore.parseFrequency('Daily');
       }
-      return ns.SheetStore._parseFrequency(ns.SheetStore._frequencyLabel(requested));
+    }
+    if (mode === AUTOMATION.HOURLY) {
+      return ns.SheetStore.parseFrequency('Hourly');
+    }
+    if (mode === AUTOMATION.HOURS) {
+      return ns.SheetStore.parseFrequency(
+        ns.SheetStore.formatFrequency(Number(data.intervalHours), ns.Constants.FREQUENCY_UNITS.HOUR)
+      );
     }
     if (mode === AUTOMATION.DAILY) {
-      return 1;
+      return ns.SheetStore.parseFrequency('Daily');
     }
-    if (mode === AUTOMATION.INTERVAL) {
-      return ns.SheetStore._parseFrequency(ns.SheetStore._frequencyLabel(Number(data.intervalDays)));
+    if (mode === AUTOMATION.DAYS || mode === 'INTERVAL') {
+      // INTERVAL is accepted only as a compatibility value for a stale v1.4
+      // sidebar that was already open during an upgrade.
+      return ns.SheetStore.parseFrequency(
+        ns.SheetStore.formatFrequency(Number(data.intervalDays), ns.Constants.FREQUENCY_UNITS.DAY)
+      );
     }
-    throw new Error('Choose Off, Daily, or Every N days for Automation.');
+    throw new Error('Choose Off, Hourly, Every N hours, Daily, or Every N days for Automation.');
   }
 
   function save(payload) {
@@ -325,7 +357,7 @@ var SpotiSync = SpotiSync || {};
     var sourcePlaylist = null;
     var targetPlaylist;
     var strategy;
-    var intervalDays;
+    var frequency;
     var enabled;
     var sourceLabel;
     var targetLabel;
@@ -338,7 +370,7 @@ var SpotiSync = SpotiSync || {};
       'Choose Liked Songs or a Spotify playlist as the source.'
     );
     strategy = ns.SheetStore._parseBehaviorLabel(data.behavior);
-    intervalDays = intervalForPayload(data);
+    frequency = frequencyForPayload(data);
     enabled = automation !== AUTOMATION.OFF;
     try {
       catalog = getCatalog(false);
@@ -379,7 +411,7 @@ var SpotiSync = SpotiSync || {};
       targetPlaylistId: targetPlaylist.id,
       targetLabel: targetLabel,
       strategy: strategy,
-      intervalDays: intervalDays,
+      frequency: frequency.label,
       heartbeatEnabled: data.heartbeatEnabled !== false
     });
 
@@ -465,7 +497,7 @@ var SpotiSync = SpotiSync || {};
     _cleanStoredLabel: cleanStoredLabel,
     _findPlaylistById: findPlaylistById,
     _automationForJob: automationForJob,
-    _intervalForPayload: intervalForPayload,
+    _frequencyForPayload: frequencyForPayload,
     _editorConfig: editorConfig
   };
 })(SpotiSync);
