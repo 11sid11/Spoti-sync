@@ -12,7 +12,27 @@ const entrypoints = fs.readFileSync(path.join(root, 'src', '99_Entrypoints.gs'),
 const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), 'utf8');
 const core = fs.readFileSync(path.join(root, 'src', '00_Core.gs'), 'utf8');
 
-function makeContext(enabledJobs, initialTriggerCount) {
+function dayJob(id, interval = 1, enabled = true) {
+  return {
+    jobId: id,
+    enabled,
+    frequencyUnit: 'DAY',
+    frequencyInterval: interval,
+    intervalDays: interval
+  };
+}
+
+function hourJob(id, interval = 1, enabled = true) {
+  return {
+    jobId: id,
+    enabled,
+    frequencyUnit: 'HOUR',
+    frequencyInterval: interval,
+    intervalHours: interval
+  };
+}
+
+function makeContext(jobs, initialTriggerCount, initialMode) {
   let triggerId = 0;
   let triggers = Array.from({ length: initialTriggerCount }, () => ({
     id: ++triggerId,
@@ -20,6 +40,14 @@ function makeContext(enabledJobs, initialTriggerCount) {
   }));
   let creates = 0;
   let deletes = 0;
+  let summaryRefreshes = 0;
+  let updateChecks = 0;
+  const createdCadences = [];
+  const documentStatus = {};
+  if (initialMode !== undefined && initialMode !== null) {
+    documentStatus.SCHEDULER_MODE = initialMode;
+  }
+
   const context = vm.createContext({
     console, Date, Object, Array, String, Number, Boolean, Math, JSON, RegExp, Error,
     Session: { getScriptTimeZone() { return 'UTC'; } },
@@ -36,12 +64,23 @@ function makeContext(enabledJobs, initialTriggerCount) {
       },
       newTrigger(handler) {
         assert.strictEqual(handler, 'spotiSyncScheduler');
+        let cadence = '';
         return {
           timeBased() { return this; },
-          everyDays(days) { assert.strictEqual(days, 1); return this; },
+          everyDays(days) {
+            assert.strictEqual(days, 1);
+            cadence = 'DAILY';
+            return this;
+          },
+          everyHours(hours) {
+            assert.strictEqual(hours, 1);
+            cadence = 'HOURLY';
+            return this;
+          },
           atHour() { return this; },
           create() {
             creates += 1;
+            createdCadences.push(cadence);
             const trigger = {
               id: ++triggerId,
               getHandlerFunction() { return 'spotiSyncScheduler'; }
@@ -53,73 +92,158 @@ function makeContext(enabledJobs, initialTriggerCount) {
       }
     }
   });
+
   context.SpotiSync = {
-    Constants: { DEFAULT_SCHEDULER_HOUR: 3 },
+    Constants: {
+      DEFAULT_SCHEDULER_HOUR: 3,
+      FREQUENCY_UNITS: { HOUR: 'HOUR', DAY: 'DAY' }
+    },
     Core: {
+      trim(value) { return value === null || value === undefined ? '' : String(value).trim(); },
       nowIso() { return new Date().toISOString(); },
       safeErrorMessage(error) { return String(error && error.message || error); }
     },
     Storage: {
-      getDocumentStatus() { return {}; },
-      setDocumentStatus() {}
+      getDocumentStatus() { return { ...documentStatus }; },
+      setDocumentStatus(values) { Object.assign(documentStatus, values); }
     },
     SheetStore: {
-      getJobs() {
-        return Array.from({ length: enabledJobs }, (_, index) => ({ jobId: `job_${index}`, enabled: true }));
-      },
-      refreshSummary() {}
+      getJobs() { return jobs.slice(); },
+      refreshSummary() { summaryRefreshes += 1; }
     },
-    UpdateChecker: { check() {} },
+    UpdateChecker: { check() { updateChecks += 1; } },
     SyncEngine: { runDue() { return { status: 'Success' }; } }
   };
   vm.runInContext(schedulerSource, context, { filename: '80_Scheduler.gs' });
+
   return {
     Scheduler: context.SpotiSync.Scheduler,
-    stats() { return { creates, deletes, triggerCount: triggers.length }; }
+    setRunDueResult(result) { context.SpotiSync.SyncEngine.runDue = () => result; },
+    stats() {
+      return {
+        creates,
+        deletes,
+        triggerCount: triggers.length,
+        createdCadences: createdCadences.slice(),
+        mode: documentStatus.SCHEDULER_MODE || '',
+        summaryRefreshes,
+        updateChecks
+      };
+    }
   };
 }
 
 (function testZeroAutomatedJobsRemovesTriggers() {
-  const env = makeContext(0, 2);
+  const env = makeContext([], 2, 'DAILY');
   const result = env.Scheduler.reconcile({ refresh: false });
   assert.strictEqual(result.enabled, false);
+  assert.strictEqual(result.mode, 'NONE');
   assert.strictEqual(env.stats().triggerCount, 0);
   assert.strictEqual(env.stats().creates, 0);
   assert.strictEqual(env.stats().deletes, 2);
+  assert.strictEqual(env.stats().mode, 'NONE');
 })();
 
-(function testOneCorrectTriggerIsNotRecreated() {
-  const env = makeContext(2, 1);
+(function testLegacySingleDailyTriggerIsRetainedAndMarked() {
+  const env = makeContext([dayJob('job_day')], 1, null);
   const result = env.Scheduler.reconcile({ refresh: false });
   assert.strictEqual(result.enabled, true);
+  assert.strictEqual(result.mode, 'DAILY');
   assert.strictEqual(result.changed, false);
   assert.strictEqual(env.stats().triggerCount, 1);
   assert.strictEqual(env.stats().creates, 0);
   assert.strictEqual(env.stats().deletes, 0);
+  assert.strictEqual(env.stats().mode, 'DAILY');
 })();
 
-(function testMissingTriggerIsCreatedOnce() {
-  const env = makeContext(1, 0);
+(function testMissingDailyTriggerIsCreatedOnce() {
+  const env = makeContext([dayJob('job_day', 7)], 0, 'NONE');
   const result = env.Scheduler.reconcile({ refresh: false });
-  assert.strictEqual(result.enabled, true);
+  assert.strictEqual(result.mode, 'DAILY');
   assert.strictEqual(result.changed, true);
   assert.strictEqual(env.stats().triggerCount, 1);
-  assert.strictEqual(env.stats().creates, 1);
+  assert.deepStrictEqual(env.stats().createdCadences, ['DAILY']);
 })();
 
-(function testDuplicateTriggersNormalizeToOne() {
-  const env = makeContext(3, 3);
+(function testHourlyJobCreatesOneHourlyDispatcher() {
+  const env = makeContext([hourJob('job_hour', 6)], 0, 'NONE');
   const result = env.Scheduler.reconcile({ refresh: false });
-  assert.strictEqual(result.enabled, true);
+  assert.strictEqual(result.mode, 'HOURLY');
+  assert.strictEqual(result.triggerCount, 1);
+  assert.deepStrictEqual(env.stats().createdCadences, ['HOURLY']);
+})();
+
+(function testMixedSchedulesUseOneHourlyDispatcher() {
+  const env = makeContext([
+    hourJob('job_hour', 12),
+    dayJob('job_daily', 1),
+    dayJob('job_weekly', 7)
+  ], 0, 'NONE');
+  const result = env.Scheduler.reconcile({ refresh: false });
+  assert.strictEqual(result.mode, 'HOURLY');
+  assert.strictEqual(result.automatedJobs, 3);
+  assert.strictEqual(env.stats().triggerCount, 1);
+  assert.deepStrictEqual(env.stats().createdCadences, ['HOURLY']);
+})();
+
+(function testCorrectHourlyTriggerIsNotRecreated() {
+  const env = makeContext([hourJob('job_hour', 2)], 1, 'HOURLY');
+  const result = env.Scheduler.reconcile({ refresh: false });
+  assert.strictEqual(result.changed, false);
+  assert.strictEqual(env.stats().creates, 0);
+  assert.strictEqual(env.stats().deletes, 0);
+})();
+
+(function testDuplicateTriggersNormalizeToOneDesiredCadence() {
+  const env = makeContext([hourJob('job_hour', 8)], 3, 'HOURLY');
+  const result = env.Scheduler.reconcile({ refresh: false });
+  assert.strictEqual(result.mode, 'HOURLY');
   assert.strictEqual(env.stats().triggerCount, 1);
   assert.strictEqual(env.stats().deletes, 3);
   assert.strictEqual(env.stats().creates, 1);
+  assert.deepStrictEqual(env.stats().createdCadences, ['HOURLY']);
 })();
 
-(function testOneDailySchedulerArchitectureRemains() {
+(function testRemovingFinalHourlyJobDowngradesToDaily() {
+  const jobs = [hourJob('job_hour', 6), dayJob('job_day', 7)];
+  const env = makeContext(jobs, 1, 'HOURLY');
+  jobs.splice(0, 1);
+  const result = env.Scheduler.reconcile({ refresh: false });
+  assert.strictEqual(result.mode, 'DAILY');
+  assert.strictEqual(env.stats().deletes, 1);
+  assert.strictEqual(env.stats().creates, 1);
+  assert.deepStrictEqual(env.stats().createdCadences, ['DAILY']);
+})();
+
+(function testDisabledHourlyJobDoesNotUpgradeDispatcher() {
+  const env = makeContext([hourJob('manual_hourly', 1, false), dayJob('job_day', 1)], 1, 'DAILY');
+  const result = env.Scheduler.reconcile({ refresh: false });
+  assert.strictEqual(result.mode, 'DAILY');
+  assert.strictEqual(result.changed, false);
+})();
+
+(function testNoDueHourlyWakeDoesNotRefreshSummary() {
+  const env = makeContext([hourJob('job_hour', 6)], 1, 'HOURLY');
+  env.setRunDueResult({ status: 'No jobs due' });
+  const result = env.Scheduler.runDue();
+  assert.strictEqual(result.status, 'No jobs due');
+  assert.strictEqual(env.stats().summaryRefreshes, 0);
+  assert.strictEqual(env.stats().updateChecks, 1);
+})();
+
+(function testCompletedDueRunRefreshesSummary() {
+  const env = makeContext([hourJob('job_hour', 1)], 1, 'HOURLY');
+  env.setRunDueResult({ status: 'Success' });
+  env.Scheduler.runDue();
+  assert.strictEqual(env.stats().summaryRefreshes, 1);
+})();
+
+(function testOneAdaptiveSchedulerArchitectureRemains() {
   assert(schedulerSource.includes('.everyDays(1)'));
+  assert(schedulerSource.includes('.everyHours(1)'));
   assert(schedulerSource.includes("var HANDLER = 'spotiSyncScheduler'"));
-  assert(!schedulerSource.includes('job.jobId') && !schedulerSource.includes('newTrigger(job'), 'Scheduler must not create per-job triggers.');
+  assert(schedulerSource.includes("HOURLY: 'HOURLY'"));
+  assert(!schedulerSource.includes('newTrigger(job'), 'Scheduler must not create per-job triggers.');
   assert(entrypoints.includes('SpotiSync.Scheduler.runDue();'), 'Clock trigger must route through Scheduler telemetry.');
 })();
 
@@ -140,4 +264,4 @@ function makeContext(enabledJobs, initialTriggerCount) {
   ['Job', 'Source', 'Target', 'Behavior', 'Automation', 'Last sync', 'Status'].forEach((label) => assert(sheetViews.includes(`'${label}'`)));
 })();
 
-console.log('v1.4 scheduler reconciliation and visible-sheet model checks passed.');
+console.log('v1.5 adaptive scheduler reconciliation and visible-sheet model checks passed.');

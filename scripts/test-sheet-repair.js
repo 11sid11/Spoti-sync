@@ -88,6 +88,7 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert.strictEqual(parsed.jobs.length, 1);
   assert.strictEqual(parsed.jobs[0].enabled, false);
   assert.strictEqual(parsed.jobs[0].strategy, 'APPEND');
+  assert.strictEqual(parsed.jobs[0].frequencyUnit, 'DAY');
   assert.strictEqual(parsed.jobs[0].intervalDays, 21);
   assert.strictEqual(parsed.jobs[0].heartbeatEnabled, false);
   assert.strictEqual(SheetStore.getAutomationLabel(parsed.jobs[0]), 'Off');
@@ -100,13 +101,34 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
       'Every 14 days', 'Every 30 days', 'Every 60 days', 'Every 90 days']
   );
   assert.deepStrictEqual(Array.from(SheetStore.behaviorOptions()), ['Exact Mirror', 'Append Only']);
-  assert.strictEqual(SheetStore._parseFrequency('Daily'), 1);
-  assert.strictEqual(SheetStore._parseFrequency('Every 21 days'), 21);
+
+  let parsed = SheetStore._parseFrequency('Daily');
+  assert.strictEqual(parsed.unit, 'DAY');
+  assert.strictEqual(parsed.interval, 1);
+  assert.strictEqual(parsed.label, 'Daily');
+
+  parsed = SheetStore._parseFrequency('Every 21 days');
+  assert.strictEqual(parsed.unit, 'DAY');
+  assert.strictEqual(parsed.interval, 21);
+  assert.strictEqual(parsed.label, 'Every 21 days');
+
+  parsed = SheetStore._parseFrequency('Hourly');
+  assert.strictEqual(parsed.unit, 'HOUR');
+  assert.strictEqual(parsed.interval, 1);
+  assert.strictEqual(parsed.label, 'Hourly');
+
+  parsed = SheetStore._parseFrequency('Every 6 hours');
+  assert.strictEqual(parsed.unit, 'HOUR');
+  assert.strictEqual(parsed.interval, 6);
+  assert.strictEqual(parsed.label, 'Every 6 hours');
+
+  assert.throws(() => SheetStore._parseFrequency('Every 0 hours'), /1 to 23/);
+  assert.throws(() => SheetStore._parseFrequency('Every 24 hours'), /Use Daily for 24 hours/);
   assert.throws(() => SheetStore._parseFrequency('Every 0 days'), /1 to 3650/);
   assert.throws(() => SheetStore._parseFrequency('Every 3651 days'), /1 to 3650/);
 })();
 
-(function testJobsAreStorageOnlyInV14() {
+(function testJobsAreStorageOnlyInV15() {
   assert(!sheetViews.includes('requireCheckbox()'), 'SheetViews must not build Jobs configuration checkboxes.');
   assert(!sheetViews.includes('requireValueInList('), 'SheetViews must not build Jobs configuration dropdowns.');
   assert(!sheetViews.includes('refreshJobsStatus'), 'Jobs presentation refresh must be removed.');
@@ -129,4 +151,4 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(replacement.indexOf('.setValues(values);') < replacement.lastIndexOf('.clearContent();'));
 })();
 
-console.log('v1.4 storage migration and status-only Sheet ownership checks passed.');
+console.log('v1.5 storage migration, frequency ownership, and status-only Sheet checks passed.');

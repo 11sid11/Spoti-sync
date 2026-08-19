@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.4.1';
+  ns.VERSION = '1.5.0';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
@@ -48,6 +48,10 @@ var SpotiSync = SpotiSync || {};
     STRATEGIES: Object.freeze({
       MIRROR: 'MIRROR',
       APPEND: 'APPEND'
+    }),
+    FREQUENCY_UNITS: Object.freeze({
+      HOUR: 'HOUR',
+      DAY: 'DAY'
     })
   });
 
@@ -210,6 +214,26 @@ var SpotiSync = SpotiSync || {};
       elapsed = ns.Core.calendarDayOrdinal(now, timezone) -
         ns.Core.calendarDayOrdinal(lastDate, timezone);
       return elapsed >= intervalDays;
+    },
+
+    isDueByElapsedHours: function (lastSuccess, intervalHours, now) {
+      var lastDate;
+      var current = now instanceof Date ? now : new Date(now);
+      var hours = Number(intervalHours);
+
+      if (!lastSuccess) {
+        return true;
+      }
+      if (!Number.isInteger(hours) || hours < 1) {
+        throw new Error('Hour interval must be a positive integer.');
+      }
+
+      lastDate = lastSuccess instanceof Date ? lastSuccess : new Date(lastSuccess);
+      if (isNaN(lastDate.getTime()) || isNaN(current.getTime())) {
+        return true;
+      }
+
+      return current.getTime() - lastDate.getTime() >= hours * 60 * 60 * 1000;
     },
 
     safeErrorMessage: function (error) {

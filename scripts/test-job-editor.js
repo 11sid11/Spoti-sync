@@ -37,7 +37,7 @@ context.SpotiSync.Auth = {
   getRedirectUri() { return 'https://script.google.com/macros/d/test/usercallback'; }
 };
 context.SpotiSync.Scheduler = {
-  getStatus() { return { enabled: false, triggerCount: 0, automatedJobs: 0 }; }
+  getStatus() { return { enabled: false, mode: 'NONE', triggerCount: 0, automatedJobs: 0 }; }
 };
 context.SpotiSync.UpdateChecker = {
   getCachedStatus() { return {}; },
@@ -81,19 +81,50 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert.strictEqual(JobEditor._cleanStoredLabel('Open playlist ↗'), '');
 })();
 
-(function testAutomationModelIsOnlyOffDailyOrInterval() {
-  assert.strictEqual(JobEditor._automationForJob({ enabled: false, intervalDays: 10 }), 'OFF');
-  assert.strictEqual(JobEditor._automationForJob({ enabled: true, intervalDays: 1 }), 'DAILY');
-  assert.strictEqual(JobEditor._automationForJob({ enabled: true, intervalDays: 21 }), 'INTERVAL');
+(function testAutomationModelSupportsHoursAndPreservesDays() {
+  assert.strictEqual(JobEditor._automationForJob({ enabled: false, frequencyUnit: 'DAY', frequencyInterval: 10 }), 'OFF');
+  assert.strictEqual(JobEditor._automationForJob({ enabled: true, frequencyUnit: 'HOUR', frequencyInterval: 1 }), 'HOURLY');
+  assert.strictEqual(JobEditor._automationForJob({ enabled: true, frequencyUnit: 'HOUR', frequencyInterval: 6 }), 'HOURS');
+  assert.strictEqual(JobEditor._automationForJob({ enabled: true, frequencyUnit: 'DAY', frequencyInterval: 1 }), 'DAILY');
+  assert.strictEqual(JobEditor._automationForJob({ enabled: true, frequencyUnit: 'DAY', frequencyInterval: 21 }), 'DAYS');
 
-  assert.strictEqual(JobEditor._intervalForPayload({ automation: 'OFF', intervalDays: 21 }), 21);
-  assert.strictEqual(JobEditor._intervalForPayload({ automation: 'DAILY', intervalDays: 99 }), 1);
-  assert.strictEqual(JobEditor._intervalForPayload({ automation: 'INTERVAL', intervalDays: 21 }), 21);
-  assert.throws(() => JobEditor._intervalForPayload({ automation: 'INTERVAL', intervalDays: 0 }), /1 to 3650/);
-  assert.throws(() => JobEditor._intervalForPayload({ automation: 'INTERVAL', intervalDays: 3651 }), /1 to 3650/);
+  let frequency = JobEditor._frequencyForPayload({ automation: 'OFF', existingFrequency: 'Every 21 days' });
+  assert.strictEqual(frequency.unit, 'DAY');
+  assert.strictEqual(frequency.interval, 21);
+  assert.strictEqual(frequency.label, 'Every 21 days');
+
+  frequency = JobEditor._frequencyForPayload({ automation: 'HOURLY' });
+  assert.strictEqual(frequency.unit, 'HOUR');
+  assert.strictEqual(frequency.interval, 1);
+  assert.strictEqual(frequency.label, 'Hourly');
+
+  frequency = JobEditor._frequencyForPayload({ automation: 'HOURS', intervalHours: 6 });
+  assert.strictEqual(frequency.unit, 'HOUR');
+  assert.strictEqual(frequency.interval, 6);
+  assert.strictEqual(frequency.label, 'Every 6 hours');
+
+  frequency = JobEditor._frequencyForPayload({ automation: 'DAILY' });
+  assert.strictEqual(frequency.unit, 'DAY');
+  assert.strictEqual(frequency.interval, 1);
+  assert.strictEqual(frequency.label, 'Daily');
+
+  frequency = JobEditor._frequencyForPayload({ automation: 'DAYS', intervalDays: 21 });
+  assert.strictEqual(frequency.unit, 'DAY');
+  assert.strictEqual(frequency.interval, 21);
+  assert.strictEqual(frequency.label, 'Every 21 days');
+
+  // A stale v1.4 sidebar that remained open during an update is still safe.
+  frequency = JobEditor._frequencyForPayload({ automation: 'INTERVAL', intervalDays: 10 });
+  assert.strictEqual(frequency.unit, 'DAY');
+  assert.strictEqual(frequency.interval, 10);
+
+  assert.throws(() => JobEditor._frequencyForPayload({ automation: 'HOURS', intervalHours: 0 }), /1 to 23/);
+  assert.throws(() => JobEditor._frequencyForPayload({ automation: 'HOURS', intervalHours: 24 }), /1 to 23/);
+  assert.throws(() => JobEditor._frequencyForPayload({ automation: 'DAYS', intervalDays: 0 }), /1 to 3650/);
+  assert.throws(() => JobEditor._frequencyForPayload({ automation: 'DAYS', intervalDays: 3651 }), /1 to 3650/);
 })();
 
-(function testExistingJobEditorConfigMapsEnabledToAutomationWithoutChangingIds() {
+(function testExistingDayJobEditorConfigPreservesIdsAndFrequency() {
   const job = {
     jobId: 'job_keep',
     name: 'Archive',
@@ -104,7 +135,11 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
     targetPlaylist: 'ABCDEFGHIJKL',
     targetLabel: 'Archive ↗',
     strategy: 'APPEND',
+    frequencyUnit: 'DAY',
+    frequencyInterval: 21,
+    frequencyLabel: 'Every 21 days',
     intervalDays: 21,
+    intervalHours: null,
     heartbeatEnabled: false
   };
   const config = JobEditor._editorConfig(job);
@@ -112,8 +147,49 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert.strictEqual(config.sourcePlaylistId, '1234567890AB');
   assert.strictEqual(config.targetPlaylistId, 'ABCDEFGHIJKL');
   assert.strictEqual(config.automation, 'OFF');
+  assert.strictEqual(config.frequency, 'Every 21 days');
   assert.strictEqual(config.intervalDays, 21);
   assert.strictEqual(config.heartbeatEnabled, false);
+})();
+
+(function testExistingHourlyJobEditorConfigInitializesCorrectly() {
+  const job = {
+    jobId: 'job_hour',
+    name: 'Fast sync',
+    enabled: true,
+    sourceType: 'LIKED_SONGS',
+    sourcePlaylist: '',
+    sourceLabel: 'Liked Songs',
+    targetPlaylist: 'ABCDEFGHIJKL',
+    targetLabel: 'Fast target',
+    strategy: 'MIRROR',
+    frequencyUnit: 'HOUR',
+    frequencyInterval: 6,
+    frequencyLabel: 'Every 6 hours',
+    intervalDays: null,
+    intervalHours: 6,
+    heartbeatEnabled: true
+  };
+  const config = JobEditor._editorConfig(job);
+  assert.strictEqual(config.automation, 'HOURS');
+  assert.strictEqual(config.frequency, 'Every 6 hours');
+  assert.strictEqual(config.intervalHours, 6);
+})();
+
+(function testCanonicalFrequencyParserOwnsHourlyValidation() {
+  let parsed = SheetStore.parseFrequency('Hourly');
+  assert.strictEqual(parsed.unit, 'HOUR');
+  assert.strictEqual(parsed.interval, 1);
+  parsed = SheetStore.parseFrequency('Every 12 hours');
+  assert.strictEqual(parsed.unit, 'HOUR');
+  assert.strictEqual(parsed.interval, 12);
+  parsed = SheetStore.parseFrequency('Daily');
+  assert.strictEqual(parsed.unit, 'DAY');
+  assert.strictEqual(parsed.interval, 1);
+  parsed = SheetStore.parseFrequency('Every 7 days');
+  assert.strictEqual(parsed.unit, 'DAY');
+  assert.strictEqual(parsed.interval, 7);
+  assert.throws(() => SheetStore.parseFrequency('Every 24 hours'), /Use Daily for 24 hours/);
 })();
 
 (function testJobServiceOwnsCatalogButHomeDoesNotFetchIt() {
@@ -123,7 +199,7 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   );
   const editorBlock = editorSource.slice(
     editorSource.indexOf('function editorModel('),
-    editorSource.indexOf('function intervalForPayload')
+    editorSource.indexOf('function frequencyForPayload')
   );
   assert(!homeBlock.includes('getCatalog('), 'Opening app home must not load Spotify playlist catalog.');
   assert(editorBlock.includes('getCatalog(false)'), 'Add/Edit may lazy-load the playlist catalog.');
@@ -143,6 +219,8 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(uiSource.includes('YOUR JOBS') || uiSource.includes('Your jobs'));
   assert(uiSource.includes('+ Add job'));
   assert(uiSource.includes('Automation'));
+  assert(uiSource.includes('intervalHours'));
+  assert(uiSource.includes('intervalDays'));
   assert(uiSource.includes('Show Spoti Sync status in playlist description'));
   assert(uiSource.includes('Delete job'));
   assert(uiSource.includes('Sync now'));
@@ -151,7 +229,7 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
 
 (function testGeneratedSidebarBootIsBrowserSafe() {
   const html = context.SpotiSync.Ui._appHtml({
-    version: '1.4.1',
+    version: '1.5.0',
     connected: true,
     clientIdHint: '',
     redirectUri: '',
@@ -176,6 +254,18 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(clientScript.includes('spotiSyncGetAppHome'), 'Home refresh must still use the canonical app-home RPC.');
   assert(clientScript.includes('r.innerHTML=html'), 'Successful render must replace the static loading state.');
   assert(clientScript.includes('renderHome(STATE);'), 'Initial home render must still occur from the embedded model.');
+})();
+
+(function testAutomationOptionsComeFromServerModel() {
+  const editorBlock = editorSource.slice(
+    editorSource.indexOf('function editorModel('),
+    editorSource.indexOf('function frequencyForPayload')
+  );
+  ['Off', 'Hourly', 'Every N hours', 'Daily', 'Every N days'].forEach((label) => {
+    assert(editorBlock.includes(`label: '${label}'`), `Missing automation option: ${label}`);
+  });
+  assert(uiSource.includes('(EDITOR.automationOptions||[]).map'), 'Sidebar should render canonical server automation options.');
+  assert(!uiSource.includes('value=\\"INTERVAL\\"'), 'Legacy INTERVAL must not be exposed as a new UI option.');
 })();
 
 (function testJobEditorNoLongerContainsSecondSidebarImplementation() {
@@ -203,4 +293,4 @@ const sheetViews = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), '
   assert(!uiSource.includes('spotiSyncSearchPlaylists'));
 })();
 
-console.log('v1.4 single-surface app, sidebar boot, and Job service tests passed.');
+console.log('v1.5 single-surface app, hourly automation, sidebar boot, and Job service tests passed.');

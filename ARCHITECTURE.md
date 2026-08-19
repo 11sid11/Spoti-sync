@@ -27,7 +27,7 @@ User's Google Sheet
               +-- job persistence
               +-- sync engine
               +-- optional playlist heartbeat
-              +-- one reconciled daily scheduler
+              +-- one reconciled scheduler
               +-- single sidebar application
               +-- read-only status + Activity views
                     |
@@ -58,14 +58,16 @@ User-facing:
 
 Internal:
 
-- **Jobs** — hidden durable job records, including stable Job IDs, playlist IDs, behavior, automation interval, heartbeat preference and per-job telemetry.
-- **Schedule** — legacy v1.3 sheet preserved/hidden on upgrade; normal v1.4 runtime does not render it.
+- **Jobs** — hidden durable job records, including stable Job IDs, playlist IDs, behavior, automation frequency, heartbeat preference and per-job telemetry.
+- **Schedule** — legacy v1.3 sheet preserved/hidden on upgrade; normal v1.5 runtime does not render it.
+
+The existing `Frequency` cell is the canonical serialized schedule. It stores values such as `Hourly`, `Every 6 hours`, `Daily`, or `Every 7 days`; no additional scheduling column is required for v1.5.
 
 ### Document Properties
 
-- scheduler telemetry
+- scheduler telemetry and current scheduler mode (`NONE`, `DAILY`, or `HOURLY`)
 - update-check cache/status
-- latest run summary
+- latest real run summary
 - playlist display-name cache
 - one tiny heartbeat phrase index per stable Job ID
 
@@ -111,12 +113,14 @@ Runtime identity uses hidden Spotify playlist IDs, not human-readable display la
 Automation maps onto the existing storage model:
 
 ```text
-Off          → enabled=false
-Daily        → enabled=true, intervalDays=1
-Every N days → enabled=true, intervalDays=N
+Off           → enabled=false, stored Frequency retained
+Hourly        → enabled=true,  unit=HOUR, interval=1
+Every N hours → enabled=true,  unit=HOUR, interval=N (1–23)
+Daily         → enabled=true,  unit=DAY,  interval=1
+Every N days  → enabled=true,  unit=DAY,  interval=N (1–3650)
 ```
 
-The canonical server-side Frequency parser remains responsible for validating the supported 1–3650 day interval.
+The canonical server-side Frequency parser remains responsible for validation. Day-based schedules retain the existing calendar-day semantics; hour-based schedules use elapsed hours since the last successful run.
 
 ## Runtime model
 
@@ -125,13 +129,16 @@ The canonical server-side Frequency parser remains responsible for validating th
 `Scheduler.reconcile()` enforces the invariant:
 
 ```text
-0 automated jobs  → 0 Spoti Sync triggers
-1+ automated jobs → exactly 1 Spoti Sync daily trigger
+0 automated jobs                         → 0 Spoti Sync triggers
+only Daily / Every N days jobs           → exactly 1 DAILY Spoti Sync trigger
+any Hourly / Every N hours job present   → exactly 1 HOURLY Spoti Sync trigger
 ```
 
-An already-correct single trigger is retained. Missing or duplicate Spoti Sync triggers are normalized. There are no per-job triggers.
+There is never a daily and hourly Spoti Sync scheduler trigger at the same time, and there are no per-job triggers.
 
-The daily trigger invokes `spotiSyncScheduler()`, which runs enabled jobs only when their configured interval is due.
+The scheduler persists the selected dispatcher mode in Document Properties because Apps Script project-trigger objects identify the handler but do not expose enough recurrence metadata for Spoti Sync to reliably infer whether an existing clock trigger is hourly or daily. A single legacy v1.4 trigger with no stored mode is treated as DAILY, so an upgrade with only day-based jobs does not recreate a correct trigger.
+
+The hourly dispatcher is deliberately cheap. It loads local job state, evaluates due jobs, and exits when none are due. A no-due check does not call Spotify, append an Activity row, overwrite the last real run summary, or repaint the status sheet. Scheduler health telemetry may still be updated.
 
 ### Manual runs
 
@@ -186,9 +193,9 @@ Normal runtime does not format or add validation to hidden Jobs, and does not re
 
 ## Migration
 
-v1.4 upgrades the v1.3.8 Jobs schema by appending `Heartbeat Enabled` and defaults existing configured jobs to `true`.
+v1.5 does not add a Jobs schema column. Existing `Daily` and `Every N days` Frequency strings continue to parse exactly as day schedules and retain their existing calendar-day behavior.
 
-Migration preserves stable Job IDs, playlist IDs, names, behavior, frequencies, automation state and telemetry. It remains explicit/bounded: no whole-sheet `clearFormats()` and no OAuth/property reset.
+The v1.4 migration protections remain in place: stable Job IDs, playlist IDs, names, behavior, frequencies, automation state, heartbeat state and telemetry are preserved. Migration remains explicit/bounded: no whole-sheet `clearFormats()` and no OAuth/property reset.
 
 The old Dashboard is renamed to Spoti Sync when safe. A conflicting unrelated user sheet named `Spoti Sync` must never be cleared; a safe status fallback is used instead.
 
@@ -212,9 +219,9 @@ Strategies remain pure planning logic.
 
 ## Safety and resilience
 
-- Script lock prevents overlapping playlist writes.
+- Script lock prevents overlapping playlist writes, including manual and scheduled runs.
 - Spotify `401` can trigger token refresh/retry.
-- Spotify `429` honors practical Retry-After values.
+- Spotify `429` honors practical `Retry-After` values and stops rather than sleeping past the Apps Script execution budget when the requested wait is too long.
 - transient `5xx` responses use bounded retries.
 - one failed job does not stop later jobs.
 - heartbeat failure does not replay playlist mutations.

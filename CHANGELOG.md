@@ -2,6 +2,35 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.5.0 — 2026-08-20
+
+### Added
+
+- Added **Hourly** and **Every N hours** automation alongside the existing Off, Daily, and Every N days options.
+- Hour-based intervals support 1–23 hours; 24 hours remains represented canonically as **Daily**.
+
+### Automation
+
+- Kept the single-trigger architecture. `Scheduler.reconcile()` now selects one of three states: no trigger when no jobs are automated, one daily trigger for day-only jobs, or one hourly dispatcher when any hour-based job exists.
+- Mixed schedules still use only one trigger. The hourly dispatcher checks local job state first and calls Spotify only for jobs that are actually due.
+- Existing single v1.4 daily triggers are retained for day-only installations instead of being recreated unnecessarily; scheduler mode is persisted in Document Properties so later reconciliations can distinguish daily and hourly cadence safely.
+
+### Compatibility and performance
+
+- Existing `Daily` and `Every N days` values keep their calendar-day semantics and require no Jobs schema migration.
+- Hour-based schedules use elapsed hours since the last successful run.
+- A no-due hourly scheduler wake does not fetch Spotify data, append Activity noise, overwrite the last real run summary, or repaint the status sheet.
+- Preserved manual Sync now for Automation Off jobs, script locking, Exact Mirror / Append Only behavior, playlist heartbeat semantics, OAuth state, playlist IDs and stable Job IDs.
+
+### Tests
+
+- Added regression coverage for hourly parsing/bounds, elapsed-hour eligibility, mixed daily/hourly reconciliation, legacy daily-trigger retention, hourly-to-daily downgrade, duplicate-trigger normalization, no-due execution cost and existing manual/day-based behavior.
+- Kept generated-sidebar boot protections, migration guards, no-`clearFormats()` protections, playlist-catalog laziness and installer-manifest checks in CI.
+
+### Upgrade note
+
+- Install the 1.5.0 bundle in the same Apps Script project, save, reload the Sheet, then choose **Spoti Sync → Open Spoti Sync**. Existing Spotify connection, Client ID, jobs, playlist IDs, heartbeat preferences and automation are preserved; no repair or manual trigger recreation is required.
+
 ## 1.4.1 — 2026-08-16
 
 ### Fixed

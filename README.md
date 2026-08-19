@@ -19,7 +19,7 @@ Spoti Sync has one normal control surface: **Spoti Sync → Open Spoti Sync**. T
 - Use **Liked Songs** or a Spotify playlist as the source.
 - Sync into an existing playlist or create a new target playlist.
 - Choose **Exact Mirror** or **Append Only** behavior.
-- Set **Automation: Off, Daily, or Every N days**.
+- Set **Automation: Off, Hourly, Every N hours, Daily, or Every N days**.
 - Run any job manually with **Sync now**.
 - Optionally keep the target playlist description updated with Spoti Sync status.
 
@@ -43,10 +43,12 @@ No web-app deployment, local server, Node.js installation, or `clasp` setup is r
 | **Source** | Liked Songs or Spotify playlist |
 | **Target** | Existing playlist or create a new playlist |
 | **Behavior** | Exact Mirror or Append Only |
-| **Automation** | Off, Daily, or Every N days |
+| **Automation** | Off, Hourly, Every N hours, Daily, or Every N days |
 
 **Exact Mirror** keeps the managed target membership aligned with the source.  
 **Append Only** adds missing source tracks and never removes existing target tracks.
+
+Spoti Sync still uses one background scheduler. If any job uses an hour-based interval, jobs are checked hourly; Spotify is contacted only for jobs that are actually due.
 
 ## 🔐 Privacy
 
@@ -71,6 +73,7 @@ Node.js 22+ is used only for local build and test tooling.
 node scripts/build.js
 node scripts/test.js
 node scripts/test-v14.js
+node scripts/test-v15.js
 node scripts/test-scheduler.js
 node scripts/test-sheet-repair.js
 node scripts/test-job-editor.js

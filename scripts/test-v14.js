@@ -11,6 +11,8 @@ const activity = [];
 let updatedSuccess = 0;
 let summaryRefreshes = 0;
 let heartbeatCalls = 0;
+let runSummaries = 0;
+let sourceReads = 0;
 
 const disabledJob = {
   rowNumber: 2,
@@ -21,6 +23,8 @@ const disabledJob = {
   sourcePlaylist: '',
   targetPlaylist: '1234567890AB',
   strategy: 'MIRROR',
+  frequencyUnit: 'DAY',
+  frequencyInterval: 10,
   intervalDays: 10,
   heartbeatEnabled: true
 };
@@ -46,11 +50,11 @@ context.SpotiSync.SheetStore = {
   updateJobError() {},
   updateConfigurationError() {},
   appendActivity(entry) { activity.push(entry); },
-  setRunSummary() {},
+  setRunSummary() { runSummaries += 1; },
   refreshSummary() { summaryRefreshes += 1; }
 };
 context.SpotiSync.Sources = {
-  getForJob() { return { tracks: [{ writeUri: 'spotify:track:A' }] }; },
+  getForJob() { sourceReads += 1; return { tracks: [{ writeUri: 'spotify:track:A' }] }; },
   getTargetPlaylist() { return { tracks: [] }; },
   invalidatePlaylist() {}
 };
@@ -77,12 +81,17 @@ load('70_SyncEngine.gs');
   assert.strictEqual(activity.length, 1);
   assert.strictEqual(summaryRefreshes, 1);
   assert.strictEqual(heartbeatCalls, 1);
+  assert.strictEqual(sourceReads, 1);
+  assert.strictEqual(runSummaries, 1);
 })();
 
-(function testDueSchedulerPathDoesNotRunAutomationOffJob() {
+(function testDueSchedulerPathDoesNotRunAutomationOffJobOrWriteNoOpRunSummary() {
   const result = context.SpotiSync.SyncEngine.runDue();
   assert.strictEqual(result.jobs.length, 0);
   assert.strictEqual(result.status, 'No jobs due');
+  assert.strictEqual(sourceReads, 1, 'No-due scheduler tick must not read Spotify sources.');
+  assert.strictEqual(activity.length, 1, 'No-due scheduler tick must not add Activity noise.');
+  assert.strictEqual(runSummaries, 1, 'No-due scheduler tick must not replace the last real run summary.');
 })();
 
 (function testTargetedManualRunDoesNotTemporarilyEnableJob() {
@@ -107,4 +116,4 @@ const views = fs.readFileSync(path.join(root, 'src', '65_SheetViews.gs'), 'utf8'
   assert(!views.includes('refreshSchedule'));
 })();
 
-console.log('v1.4 manual-run, heartbeat, and one-summary-refresh tests passed.');
+console.log('v1.5 manual-run, heartbeat, no-op scheduler, and one-summary-refresh tests passed.');

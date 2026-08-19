@@ -25,6 +25,8 @@ jobs:
         run: node scripts/test.js
       - name: Run v1.4 single-surface tests
         run: node scripts/test-v14.js
+      - name: Run v1.5 sub-daily automation tests
+        run: node scripts/test-v15.js
       - name: Run sheet and scheduler checks
         run: node scripts/test-scheduler.js
       - name: Run migration and storage checks

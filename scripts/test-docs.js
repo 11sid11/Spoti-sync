@@ -81,6 +81,7 @@ const requiredCurrentFlow = [
   'Spoti Sync → Open Spoti Sync',
   'Exact Mirror',
   'Append Only',
+  'Every N hours',
   'Every N days'
 ];
 

@@ -12,7 +12,7 @@ let fetchCount = 0;
 let responseStatus = 200;
 let responseBody = {
   schema: 1,
-  version: '1.4.2',
+  version: '1.5.1',
   channel: 'stable',
   released_at: '2026-09-01',
   installer_url: 'https://example.com/update',
@@ -71,7 +71,7 @@ const { UpdateChecker, VERSION } = context.SpotiSync;
   const status = UpdateChecker.check({ force: true });
   assert.strictEqual(fetchCount, 1);
   assert.strictEqual(status.currentVersion, VERSION);
-  assert.strictEqual(status.latestVersion, '1.4.2');
+  assert.strictEqual(status.latestVersion, '1.5.1');
   assert.strictEqual(status.updateAvailable, true);
   assert.strictEqual(status.checkStatus, 'Update available');
   assert.strictEqual(status.installerUrl, 'https://example.com/update');
@@ -80,15 +80,15 @@ const { UpdateChecker, VERSION } = context.SpotiSync;
 (function testNormalCheckUsesDailyCache() {
   const status = UpdateChecker.check({ force: false });
   assert.strictEqual(fetchCount, 1, 'Fresh cached status must avoid another GitHub request.');
-  assert.strictEqual(status.latestVersion, '1.4.2');
+  assert.strictEqual(status.latestVersion, '1.5.1');
 })();
 
 (function testCachedAvailabilityRecomputesAfterCodeUpgrade() {
   const installedVersion = context.SpotiSync.VERSION;
-  context.SpotiSync.VERSION = '1.4.2';
+  context.SpotiSync.VERSION = '1.5.1';
   const status = UpdateChecker.getCachedStatus();
-  assert.strictEqual(status.currentVersion, '1.4.2');
-  assert.strictEqual(status.latestVersion, '1.4.2');
+  assert.strictEqual(status.currentVersion, '1.5.1');
+  assert.strictEqual(status.latestVersion, '1.5.1');
   assert.strictEqual(status.updateAvailable, false);
   assert.strictEqual(status.checkStatus, 'Up to date');
   context.SpotiSync.VERSION = installedVersion;
@@ -126,7 +126,7 @@ const { UpdateChecker, VERSION } = context.SpotiSync;
   responseStatus = 200;
   responseBody = {
     ...responseBody,
-    version: '1.4.2'
+    version: '1.5.1'
   };
   documentStatus.UPDATE_LAST_CHECK_AT = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const status = UpdateChecker.check({ force: false });
