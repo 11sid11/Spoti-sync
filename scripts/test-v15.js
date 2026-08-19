@@ -19,6 +19,7 @@ const context = vm.createContext({
     getUuid() { return '12345678-1234-1234-1234-123456789abc'; },
     formatDate(date, timezone, pattern) {
       if (pattern === 'yyyy-MM-dd') { return date.toISOString().slice(0, 10); }
+      if (pattern === 'H') { return String(date.getUTCHours()); }
       return date.toISOString();
     }
   }
@@ -30,8 +31,9 @@ function load(filename) {
 
 load('00_Core.gs');
 load('60_SheetStore.gs');
+load('70_SyncEngine.gs');
 
-const { Core, SheetStore } = context.SpotiSync;
+const { Core, SheetStore, SyncEngine } = context.SpotiSync;
 
 function jobRow(frequency, lastSuccess = '') {
   return [
@@ -89,6 +91,30 @@ function jobRow(frequency, lastSuccess = '') {
   assert.strictEqual(SheetStore.isJobDue(job, new Date('2026-08-20T00:01:00Z')), true);
 })();
 
+(function testHourlyDispatcherPreservesExistingDailyWindow() {
+  const dayJob = SheetStore._parseJobRows([
+    jobRow('Every 7 days', new Date('2026-08-13T23:59:00Z'))
+  ], 2).jobs[0];
+  const hourJob = SheetStore._parseJobRows([
+    jobRow('Every 6 hours', new Date('2026-08-19T20:00:00Z'))
+  ], 2).jobs[0];
+
+  assert.strictEqual(
+    SyncEngine._isDueInDispatcher(dayJob, { schedulerMode: 'HOURLY' }, new Date('2026-08-20T02:30:00Z')),
+    false,
+    'A mixed hourly dispatcher must not pull existing day jobs forward before the legacy daily window.'
+  );
+  assert.strictEqual(
+    SyncEngine._isDueInDispatcher(dayJob, { schedulerMode: 'HOURLY' }, new Date('2026-08-20T03:30:00Z')),
+    true
+  );
+  assert.strictEqual(
+    SyncEngine._isDueInDispatcher(hourJob, { schedulerMode: 'HOURLY' }, new Date('2026-08-20T02:30:00Z')),
+    true,
+    'Hour-based jobs are governed by elapsed hours, not the daily window.'
+  );
+})();
+
 (function testFrequencyBoundsAndCanonicalLabels() {
   assert.strictEqual(SheetStore.parseFrequency('Every 23 hours').label, 'Every 23 hours');
   assert.strictEqual(SheetStore.parseFrequency('Every 3650 days').label, 'Every 3650 days');
@@ -104,6 +130,7 @@ function jobRow(frequency, lastSuccess = '') {
   const sheetStore = fs.readFileSync(path.join(root, 'src', '60_SheetStore.gs'), 'utf8');
 
   assert(scheduler.includes('.everyHours(1)'), 'Sub-daily jobs must use one hourly dispatcher.');
+  assert(scheduler.includes('schedulerMode: mode'), 'Scheduler must tell SyncEngine which dispatcher cadence invoked it.');
   assert(!scheduler.includes('newTrigger(job'), 'No per-job triggers may be created.');
   assert(!scheduler.includes('clearFormats()'));
   assert(!syncEngine.includes('clearFormats()'));
@@ -111,4 +138,4 @@ function jobRow(frequency, lastSuccess = '') {
   assert(!syncEngine.includes('SheetStore.initialize('), 'Normal sync must not invoke migration/repair.');
 })();
 
-console.log('v1.5 frequency, due-time, and hot-path safety checks passed.');
+console.log('v1.5 frequency, due-time, mixed-schedule compatibility, and hot-path safety checks passed.');
