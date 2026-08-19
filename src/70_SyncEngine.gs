@@ -222,7 +222,12 @@ var SpotiSync = SpotiSync || {};
       if (!jobs.length && !configurationErrors.length) {
         result.status = opts.dueOnly ? 'No jobs due' : 'No enabled jobs';
       }
-      ns.SheetStore.setRunSummary(result);
+      // An hourly dispatcher can wake with nothing due. That is scheduler
+      // telemetry, not a playlist run, so do not overwrite the user's last-run
+      // summary on a no-op due check.
+      if (!(opts.dueOnly && !jobs.length && !configurationErrors.length)) {
+        ns.SheetStore.setRunSummary(result);
+      }
     }
     return result;
   }
