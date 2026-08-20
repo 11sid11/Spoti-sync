@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "channel": "stable",
   "released_at": "2026-08-20",
   "installer_url": "https://sid.is-a.dev/Spoti-sync/#update",
   "changelog_url": "https://github.com/11sid11/Spoti-sync/blob/main/CHANGELOG.md",
   "notes": [
-    "Adds Hourly and Every N hours automation while keeping the existing Off, Daily, and Every N days options.",
-    "Keeps a single adaptive Apps Script scheduler: daily for day-only jobs, hourly when any sub-daily job exists, with Spotify contacted only for due jobs.",
-    "Preserves existing jobs, playlist IDs, OAuth state, day-based scheduling semantics, manual Sync now behavior, and heartbeat settings."
+    "Polishes playlist heartbeat timestamps to the compact format 🔄 Thu, Aug 20 · 3:16 AM.",
+    "Preserves rotating heartbeat phrases, the sid.is-a.dev signature, spreadsheet-timezone formatting, and Success-with-warning behavior.",
+    "Presentation-only patch: scheduler, OAuth, jobs, playlist IDs, sync behavior, and Spotify API call count are unchanged."
   ]
 }
