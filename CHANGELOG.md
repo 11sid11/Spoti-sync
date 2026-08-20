@@ -2,6 +2,17 @@
 
 All notable changes to Spoti Sync are documented here.
 
+## 1.5.1 — 2026-08-20
+
+### Changed
+
+- Updated playlist heartbeat timestamps to the compact format `🔄 Thu, Aug 20 · 3:16 AM` while keeping the existing rotating Spoti Sync phrase and `sid.is-a.dev` signature.
+- Preserved spreadsheet-timezone formatting, heartbeat opt-in/out behavior, phrase rotation, playlist-write ordering, and `Success with warning` semantics for description-only failures.
+
+### Upgrade note
+
+- Install the 1.5.1 bundle in the same Apps Script project, save, and reload the Sheet. No Spotify reconnection, job recreation, scheduler recreation, repair step, or playlist-ID re-entry is required.
+
 ## 1.5.0 — 2026-08-20
 
 ### Added

@@ -42,8 +42,8 @@ var SpotiSync = SpotiSync || {};
       throw new Error('Cannot build playlist heartbeat with an invalid timestamp.');
     }
 
-    timestamp = Utilities.formatDate(when, timezone, "EEEE 'at' h:mm a");
-    return PHRASES[index] + ' · ' + ns.Constants.HEARTBEAT_SIGNATURE + ' · Synced ' + timestamp;
+    timestamp = Utilities.formatDate(when, timezone, 'EEE, MMM d · h:mm a');
+    return PHRASES[index] + ' · ' + ns.Constants.HEARTBEAT_SIGNATURE + ' · 🔄 ' + timestamp;
   }
 
   ns.PlaylistHeartbeat = {

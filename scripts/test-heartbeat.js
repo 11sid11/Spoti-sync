@@ -9,14 +9,16 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const properties = new Map();
 const calls = [];
+const heartbeatDate = new Date('2026-08-19T21:46:00Z');
 const context = vm.createContext({
   console, Date, Object, Array, String, Number, Boolean, Math, JSON, RegExp, Error,
   encodeURIComponent,
   Utilities: {
     formatDate(date, timezone, pattern) {
       assert.strictEqual(timezone, 'Asia/Kolkata');
-      assert.strictEqual(pattern, "EEEE 'at' h:mm a");
-      return 'Saturday at 2:22 AM';
+      assert.strictEqual(pattern, 'EEE, MMM d · h:mm a');
+      assert.strictEqual(date.toISOString(), heartbeatDate.toISOString());
+      return 'Thu, Aug 20 · 3:16 AM';
     }
   },
   LockService: {
@@ -45,6 +47,9 @@ context.SpotiSync.SheetStore = {
 context.SpotiSync.SpotifyApi = {
   updatePlaylistDescription(playlistId, description) {
     calls.push(['description', playlistId, description]);
+  },
+  updatePlaylistName() {
+    calls.push(['name']);
   }
 };
 load('75_PlaylistHeartbeat.gs');
@@ -53,17 +58,20 @@ const job = { jobId: 'job_abc', targetPlaylist: '1234567890AB' };
 const H = context.SpotiSync.PlaylistHeartbeat;
 
 (function testDescriptionTemplate() {
-  const text = H._buildDescription(job, new Date('2026-08-15T00:00:00Z'), 'Asia/Kolkata', 0);
-  assert.strictEqual(text, 'Kept fresh with Spoti Sync ✨ · sid.is-a.dev · Synced Saturday at 2:22 AM');
+  const text = H._buildDescription(job, heartbeatDate, 'Asia/Kolkata', 0);
+  assert.strictEqual(text, 'Kept fresh with Spoti Sync ✨ · sid.is-a.dev · 🔄 Thu, Aug 20 · 3:16 AM');
 })();
 
 (function testPhraseRotationOnlyAfterSuccessfulUpdate() {
-  const first = H.update(job, new Date('2026-08-15T00:00:00Z'));
-  const second = H.update(job, new Date('2026-08-15T00:00:00Z'));
+  calls.length = 0;
+  const first = H.update(job, heartbeatDate);
+  const second = H.update(job, heartbeatDate);
   assert.strictEqual(first.ok, true);
   assert.strictEqual(first.phraseIndex, 0);
   assert.strictEqual(second.phraseIndex, 1);
   assert(second.description.startsWith('Kept in sync with Spoti Sync 🔄'));
+  assert.strictEqual(calls.filter((entry) => entry[0] === 'description').length, 2);
+  assert.strictEqual(calls.some((entry) => entry[0] === 'name'), false, 'Heartbeat must never rename the playlist.');
 })();
 
 (function testFailureIsReturnedWithoutAdvancingRotation() {
@@ -71,7 +79,7 @@ const H = context.SpotiSync.PlaylistHeartbeat;
   context.SpotiSync.SpotifyApi.updatePlaylistDescription = function () {
     throw new Error('temporary description failure');
   };
-  const result = H.update(job, new Date('2026-08-15T00:00:00Z'));
+  const result = H.update(job, heartbeatDate);
   assert.strictEqual(result.ok, false);
   assert.match(result.error, /temporary description failure/);
   assert.strictEqual(H._readIndex(job), currentIndex);
@@ -144,4 +152,4 @@ load('70_SyncEngine.gs');
   assert.match(summary.warning, /description API unavailable/);
 })();
 
-console.log('Playlist heartbeat opt-in/out and ordering tests passed.');
+console.log('Playlist heartbeat timestamp, opt-in/out, and ordering tests passed.');
