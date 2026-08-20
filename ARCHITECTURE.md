@@ -170,10 +170,10 @@ A description-only failure is non-fatal and produces `Success with warning`. A f
 `75_PlaylistHeartbeat.gs` owns description formatting and phrase rotation:
 
 ```text
-[rotating Spoti Sync phrase] · sid.is-a.dev · Synced [weekday] at [time]
+[rotating Spoti Sync phrase] · sid.is-a.dev · 🔄 Thu, Aug 20 · 3:16 AM
 ```
 
-The job-owned `Heartbeat Enabled` field controls whether SyncEngine invokes that module. Disabling it does not clear or replace the current Spotify description.
+The timestamp uses the spreadsheet timezone. The job-owned `Heartbeat Enabled` field controls whether SyncEngine invokes that module. Disabling it does not clear or replace the current Spotify description.
 
 Phrase rotation state remains in Document Properties and advances only after Spotify accepts the description update.
 
