@@ -5,7 +5,7 @@ var SpotiSync = SpotiSync || {};
 (function (ns) {
   'use strict';
 
-  ns.VERSION = '1.5.0';
+  ns.VERSION = '1.5.1';
 
   ns.Constants = Object.freeze({
     APP_NAME: 'Spoti Sync',
@@ -71,7 +71,7 @@ var SpotiSync = SpotiSync || {};
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
+        .replace(/\"/g, '&quot;')
         .replace(/'/g, '&#39;');
     },
 
